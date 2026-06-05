@@ -2,7 +2,9 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Pressable, Alert, Modal, TextInput, ActivityIndicator, ScrollView } from "react-native";
 import { useTheme } from '../../context/ThemeContext';
-import { supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "../../utils/config";
+import { supabase } from "../../utils/config";
+
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 import { useNavigation } from "@react-navigation/native";
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,52 +22,35 @@ export default function Profile() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const deleteAuthUser = async (userId) => {
-    const response = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch(`${BACKEND_URL}/delete-user`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        Authorization: `Bearer ${session?.access_token}`,
       },
+      body: JSON.stringify({ userId }),
     });
 
     if (!response.ok) {
       let message = 'Failed to delete account.';
       try {
         const data = await response.json();
-        if (data?.message) {
-          message = data.message;
-        }
+        if (data?.message) message = data.message;
       } catch {
-        // ignore parse errors, fall back to default message
+        // ignore parse errors
       }
       throw new Error(message);
     }
   };
 
   const deleteUserProfileRow = async (userId) => {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${userId}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        Prefer: 'return=minimal',
-      },
-    });
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', userId);
 
-    if (!response.ok && response.status !== 404) {
-      let message = 'Failed to delete user profile.';
-      try {
-        const data = await response.json();
-        if (data?.message) {
-          message = data.message;
-        }
-      } catch {
-        // ignore parse errors
-      }
-      throw new Error(message);
-    }
+    if (error) throw new Error(error.message);
   };
 
   const handleLogout = async () => {
