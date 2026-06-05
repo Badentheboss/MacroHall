@@ -1,0 +1,13 @@
+export type RootStackParamList = {
+  Index: undefined;
+  SignIn: undefined;
+  SignUp: undefined;
+  Main: undefined; // Main Tab Navigator
+  Dashboard: undefined; // Tab screen
+  AddFood: undefined; // Tab screen
+  Log: undefined; // Tab screen
+  "(tabs)": undefined;
+  DietaryPreferences: undefined;
+  Settings: undefined;
+  UserProfile: { firstTimeSetup?: boolean } | undefined;
+};

@@ -1,0 +1,22 @@
+module.exports = {
+  slug: 'ohio-state',
+  name: 'Ohio State',
+  listingUrl: 'https://dining.osu.edu/locations',
+  adapter: 'ohio-state',
+  fetchMode: 'http',
+  selectors: {
+    listingHallLinks: '#locations [data-location]',
+    hallName: '.venue-title',
+    mealBlocks: '.daypart',
+    mealName: '.daypart-name',
+    stationBlocks: '.category',
+    stationName: '.category-title',
+    items: '.entry',
+    itemName: '.entry-name',
+    itemAllergens: '.entry-allergens li',
+    itemTraits: '.entry-traits li',
+    nutritionRows: '.entry-nutrition tr',
+    nutritionRowLabel: 'th',
+    nutritionRowValue: 'td',
+  },
+};

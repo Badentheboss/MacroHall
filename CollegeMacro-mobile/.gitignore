@@ -1,0 +1,48 @@
+# ─────────────────────────────
+# Node & Package Management
+# ─────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─────────────────────────────
+# Expo / React Native
+# ─────────────────────────────
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# ─────────────────────────────
+# Platform Specific
+# ─────────────────────────────
+.DS_Store
+*.pem
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# ─────────────────────────────
+# Environment Variables (keep secrets safe)
+# ─────────────────────────────
+.env
+.env.local
+.env.development
+.env.production
+.env.*
+.env*.local
+
+# ─────────────────────────────
+# TypeScript
+# ─────────────────────────────
+*.tsbuildinfo
+
+# ─────────────────────────────
+# Miscellaneous
+# ─────────────────────────────
+app-example

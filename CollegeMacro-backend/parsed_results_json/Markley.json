@@ -1,0 +1,379 @@
+[
+  [
+    "Oatmeal",
+    [
+      "brunch"
+    ],
+    [
+      "oats"
+    ],
+    [
+      "Nutrient Dense High",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "253",
+      "calories": "183",
+      "total_fat": "3",
+      "saturated_fat": "1",
+      "cholesterol": "0",
+      "sodium": "3",
+      "total_carbohydrate": "33",
+      "dietary_fiber": "5",
+      "sugars": "1",
+      "protein": "6",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "3",
+      "iron": "11"
+    }
+  ],
+  [
+    "Butterscotch Chip Pancakes",
+    [
+      "brunch"
+    ],
+    [
+      "milk",
+      "oats",
+      "soy",
+      "wheat/barley/rye"
+    ],
+    [
+      "Vegetarian"
+    ],
+    {
+      "serving_size": "45",
+      "calories": "85",
+      "total_fat": "1",
+      "saturated_fat": "1",
+      "cholesterol": "0",
+      "sodium": "283",
+      "total_carbohydrate": "16",
+      "dietary_fiber": "0",
+      "sugars": "5",
+      "protein": "2",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "2",
+      "iron": "4"
+    }
+  ],
+  [
+    "Scrambled Eggs",
+    [
+      "brunch"
+    ],
+    [
+      "eggs",
+      "soy"
+    ],
+    [
+      "Gluten Free",
+      "Nutrient Dense High",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "84",
+      "calories": "163",
+      "total_fat": "12",
+      "saturated_fat": "4",
+      "cholesterol": "336",
+      "sodium": "116",
+      "total_carbohydrate": "0",
+      "dietary_fiber": "0",
+      "sugars": "0",
+      "protein": "11",
+      "vitamin_a": "7",
+      "vitamin_c": "0",
+      "calcium": "6",
+      "iron": "9"
+    }
+  ],
+  [
+    "Bacon",
+    [
+      "brunch"
+    ],
+    [
+      "pork"
+    ],
+    [
+      "Gluten Free",
+      "Nutrient Dense Low",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "41",
+      "calories": "204",
+      "total_fat": "18",
+      "saturated_fat": "6",
+      "cholesterol": "51",
+      "sodium": "638",
+      "total_carbohydrate": "0",
+      "dietary_fiber": "0",
+      "sugars": "0",
+      "protein": "13",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "0",
+      "iron": "0"
+    }
+  ],
+  [
+    "Scrambled Tofu",
+    [
+      "brunch"
+    ],
+    [
+      "soy"
+    ],
+    [
+      "Gluten Free",
+      "Nutrient Dense High",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "113",
+      "calories": "157",
+      "total_fat": "10",
+      "saturated_fat": "2",
+      "cholesterol": "0",
+      "sodium": "231",
+      "total_carbohydrate": "4",
+      "dietary_fiber": "2",
+      "sugars": "1",
+      "protein": "13",
+      "vitamin_a": "0",
+      "vitamin_c": "10",
+      "calcium": "9",
+      "iron": "9"
+    }
+  ],
+  [
+    "Roasted Vegetable Medley",
+    [
+      "brunch"
+    ],
+    [],
+    [
+      "Gluten Free",
+      "Nutrient Dense Medium",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "85",
+      "calories": "47",
+      "total_fat": "3",
+      "saturated_fat": "0",
+      "cholesterol": "0",
+      "sodium": "33",
+      "total_carbohydrate": "4",
+      "dietary_fiber": "1",
+      "sugars": "2",
+      "protein": "1",
+      "vitamin_a": "10",
+      "vitamin_c": "14",
+      "calcium": "2",
+      "iron": "2"
+    }
+  ],
+  [
+    "Deep Fried Tritaters",
+    [
+      "brunch"
+    ],
+    [
+      "item is deep fried"
+    ],
+    [
+      "Nutrient Dense Low",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "113",
+      "calories": "209",
+      "total_fat": "15",
+      "saturated_fat": "3",
+      "cholesterol": "0",
+      "sodium": "506",
+      "total_carbohydrate": "22",
+      "dietary_fiber": "2",
+      "sugars": "0",
+      "protein": "2",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "2",
+      "iron": "2"
+    }
+  ],
+  [
+    "Strawberry Banana Crumble w/Coconut",
+    [
+      "brunch"
+    ],
+    [
+      "oats",
+      "soy",
+      "tree nuts",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Medium High",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "154",
+      "calories": "327",
+      "total_fat": "10",
+      "saturated_fat": "5",
+      "cholesterol": "0",
+      "sodium": "119",
+      "total_carbohydrate": "60",
+      "dietary_fiber": "4",
+      "sugars": "39",
+      "protein": "3",
+      "vitamin_a": "1",
+      "vitamin_c": "35",
+      "calcium": "1",
+      "iron": "7"
+    }
+  ],
+  [
+    "Sugar Cookies",
+    [
+      "brunch"
+    ],
+    [
+      "eggs",
+      "milk",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Low",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "35",
+      "calories": "162",
+      "total_fat": "8",
+      "saturated_fat": "3",
+      "cholesterol": "10",
+      "sodium": "137",
+      "total_carbohydrate": "19",
+      "dietary_fiber": "0",
+      "sugars": "10",
+      "protein": "2",
+      "vitamin_a": "6",
+      "vitamin_c": "0",
+      "calcium": "1",
+      "iron": "3"
+    }
+  ],
+  [
+    "Chocolate Chocolate Chip Muffins",
+    [
+      "brunch"
+    ],
+    [
+      "eggs",
+      "milk",
+      "soy",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Low Medium",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "54",
+      "calories": "176",
+      "total_fat": "8",
+      "saturated_fat": "2",
+      "cholesterol": "17",
+      "sodium": "172",
+      "total_carbohydrate": "24",
+      "dietary_fiber": "1",
+      "sugars": "15",
+      "protein": "2",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "0",
+      "iron": "5"
+    }
+  ],
+  [
+    "White Chocolate Raspberry Bread",
+    [
+      "brunch"
+    ],
+    [
+      "eggs",
+      "milk",
+      "soy",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Low Medium",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "61",
+      "calories": "198",
+      "total_fat": "8",
+      "saturated_fat": "2",
+      "cholesterol": "19",
+      "sodium": "160",
+      "total_carbohydrate": "30",
+      "dietary_fiber": "1",
+      "sugars": "17",
+      "protein": "3",
+      "vitamin_a": "0",
+      "vitamin_c": "1",
+      "calcium": "5",
+      "iron": "5"
+    }
+  ],
+  [
+    "Assorted Mini Danishes with Nuts",
+    [
+      "brunch"
+    ],
+    [
+      "eggs",
+      "milk",
+      "tree nuts",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Low Medium",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "43",
+      "calories": "132",
+      "total_fat": "7",
+      "saturated_fat": "3",
+      "cholesterol": "10",
+      "sodium": "46",
+      "total_carbohydrate": "15",
+      "dietary_fiber": "1",
+      "sugars": "4",
+      "protein": "2",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "3",
+      "iron": "15"
+    }
+  ]
+]

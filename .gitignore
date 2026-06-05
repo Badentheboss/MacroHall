@@ -1,0 +1,15 @@
+.DS_Store
+node_modules/
+.env
+.env.*
+!.env.example
+.vercel/
+.expo/
+dist/
+web-build/
+coverage/
+*.tsbuildinfo
+.idea/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

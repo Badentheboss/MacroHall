@@ -1,0 +1,33 @@
+{
+  "name": "collegemacro-backend",
+  "version": "1.0.0",
+  "description": "Multi-school dining ingestion backend with per-school parser adapters and normalized storage.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "ingest": "node src/cli/ingest.js",
+    "ingest:all": "node src/cli/ingest.js --school=all --persist=true",
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "dining",
+    "nutrition",
+    "supabase",
+    "parser"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.8",
+    "axios": "^1.6.8",
+    "cheerio": "^1.0.0-rc.12",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "puppeteer": "^24.26.1",
+    "touch": "^3.1.0",
+    "vercel": "^33.6.3"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.0.26"
+  }
+}

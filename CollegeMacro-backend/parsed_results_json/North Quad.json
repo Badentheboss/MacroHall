@@ -1,0 +1,532 @@
+[
+  [
+    "Oatmeal",
+    [
+      "brunch"
+    ],
+    [
+      "oats"
+    ],
+    [
+      "Nutrient Dense High",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "253",
+      "calories": "183",
+      "total_fat": "3",
+      "saturated_fat": "1",
+      "cholesterol": "0",
+      "sodium": "3",
+      "total_carbohydrate": "33",
+      "dietary_fiber": "5",
+      "sugars": "1",
+      "protein": "6",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "3",
+      "iron": "11"
+    }
+  ],
+  [
+    "Sauteed Vegetables",
+    [
+      "brunch"
+    ],
+    [],
+    [
+      "Gluten Free",
+      "Nutrient Dense Medium",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "91",
+      "calories": "54",
+      "total_fat": "2",
+      "saturated_fat": "0",
+      "cholesterol": "0",
+      "sodium": "17",
+      "total_carbohydrate": "7",
+      "dietary_fiber": "2",
+      "sugars": "3",
+      "protein": "2",
+      "vitamin_a": "20",
+      "vitamin_c": "65",
+      "calcium": "3",
+      "iron": "4"
+    }
+  ],
+  [
+    "Bruschetta Tofu Scramble",
+    [
+      "brunch"
+    ],
+    [
+      "soy"
+    ],
+    [
+      "Gluten Free",
+      "Nutrient Dense High",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "95",
+      "calories": "134",
+      "total_fat": "8",
+      "saturated_fat": "1",
+      "cholesterol": "0",
+      "sodium": "265",
+      "total_carbohydrate": "7",
+      "dietary_fiber": "2",
+      "sugars": "2",
+      "protein": "11",
+      "vitamin_a": "20",
+      "vitamin_c": "15",
+      "calcium": "8",
+      "iron": "8"
+    }
+  ],
+  [
+    "Scrambled Eggs",
+    [
+      "brunch"
+    ],
+    [
+      "eggs",
+      "soy"
+    ],
+    [
+      "Gluten Free",
+      "Nutrient Dense High",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "84",
+      "calories": "163",
+      "total_fat": "12",
+      "saturated_fat": "4",
+      "cholesterol": "336",
+      "sodium": "116",
+      "total_carbohydrate": "0",
+      "dietary_fiber": "0",
+      "sugars": "0",
+      "protein": "11",
+      "vitamin_a": "7",
+      "vitamin_c": "0",
+      "calcium": "6",
+      "iron": "9"
+    }
+  ],
+  [
+    "Strawberry Pancakes",
+    [
+      "brunch"
+    ],
+    [
+      "milk",
+      "oats",
+      "soy",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Medium",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "45",
+      "calories": "67",
+      "total_fat": "1",
+      "saturated_fat": "0",
+      "cholesterol": "0",
+      "sodium": "278",
+      "total_carbohydrate": "14",
+      "dietary_fiber": "0",
+      "sugars": "2",
+      "protein": "2",
+      "vitamin_a": "0",
+      "vitamin_c": "2",
+      "calcium": "1",
+      "iron": "5"
+    }
+  ],
+  [
+    "Chicken Sausage Patties",
+    [
+      "brunch"
+    ],
+    [],
+    [
+      "Gluten Free",
+      "Nutrient Dense Medium",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "43",
+      "calories": "81",
+      "total_fat": "6",
+      "saturated_fat": "2",
+      "cholesterol": "41",
+      "sodium": "273",
+      "total_carbohydrate": "0",
+      "dietary_fiber": "0",
+      "sugars": "0",
+      "protein": "6",
+      "vitamin_a": "0",
+      "vitamin_c": "2",
+      "calcium": "0",
+      "iron": "2"
+    }
+  ],
+  [
+    "Seasoned Redskin Potatoes",
+    [
+      "brunch"
+    ],
+    [],
+    [
+      "Gluten Free",
+      "Nutrient Dense Medium",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "113",
+      "calories": "168",
+      "total_fat": "7",
+      "saturated_fat": "1",
+      "cholesterol": "0",
+      "sodium": "194",
+      "total_carbohydrate": "24",
+      "dietary_fiber": "2",
+      "sugars": "2",
+      "protein": "3",
+      "vitamin_a": "0",
+      "vitamin_c": "26",
+      "calcium": "1",
+      "iron": "5"
+    }
+  ],
+  [
+    "Chicken Pasta Primavera",
+    [
+      "brunch"
+    ],
+    [
+      "milk",
+      "wheat/barley/rye"
+    ],
+    [
+      "Halal",
+      "Nutrient Dense Medium",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "113",
+      "calories": "137",
+      "total_fat": "5",
+      "saturated_fat": "2",
+      "cholesterol": "5",
+      "sodium": "140",
+      "total_carbohydrate": "15",
+      "dietary_fiber": "2",
+      "sugars": "2",
+      "protein": "9",
+      "vitamin_a": "8",
+      "vitamin_c": "17",
+      "calcium": "9",
+      "iron": "5"
+    }
+  ],
+  [
+    "Cheese Flatbread Pizza",
+    [
+      "brunch"
+    ],
+    [
+      "milk",
+      "sesame seed",
+      "soy",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Low Medium",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "49",
+      "calories": "89",
+      "total_fat": "5",
+      "saturated_fat": "2",
+      "cholesterol": "13",
+      "sodium": "210",
+      "total_carbohydrate": "8",
+      "dietary_fiber": "1",
+      "sugars": "1",
+      "protein": "4",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "9",
+      "iron": "3"
+    }
+  ],
+  [
+    "Pepperoni Flatbread Pizza",
+    [
+      "brunch"
+    ],
+    [
+      "beef",
+      "milk",
+      "sesame seed",
+      "soy",
+      "wheat/barley/rye"
+    ],
+    [
+      "Halal",
+      "Nutrient Dense Low Medium",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "53",
+      "calories": "107",
+      "total_fat": "6",
+      "saturated_fat": "3",
+      "cholesterol": "17",
+      "sodium": "276",
+      "total_carbohydrate": "8",
+      "dietary_fiber": "1",
+      "sugars": "1",
+      "protein": "5",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "9",
+      "iron": "3"
+    }
+  ],
+  [
+    "Bratwurst",
+    [
+      "brunch"
+    ],
+    [
+      "beef",
+      "pork"
+    ],
+    [
+      "Gluten Free",
+      "Nutrient Dense Low",
+      "Carbon Footprint Medium"
+    ],
+    {
+      "serving_size": "57",
+      "calories": "156",
+      "total_fat": "13",
+      "saturated_fat": "5",
+      "cholesterol": "43",
+      "sodium": "559",
+      "total_carbohydrate": "1",
+      "dietary_fiber": "0",
+      "sugars": "0",
+      "protein": "9",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "14",
+      "iron": "7"
+    }
+  ],
+  [
+    "Braised Red Cabbage",
+    [
+      "brunch"
+    ],
+    [],
+    [
+      "Gluten Free",
+      "Nutrient Dense Medium",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "85",
+      "calories": "60",
+      "total_fat": "2",
+      "saturated_fat": "0",
+      "cholesterol": "0",
+      "sodium": "131",
+      "total_carbohydrate": "11",
+      "dietary_fiber": "2",
+      "sugars": "7",
+      "protein": "2",
+      "vitamin_a": "21",
+      "vitamin_c": "90",
+      "calcium": "5",
+      "iron": "4"
+    }
+  ],
+  [
+    "Carrot Radish Slaw",
+    [
+      "brunch"
+    ],
+    [],
+    [
+      "Gluten Free",
+      "Nutrient Dense Medium",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "57",
+      "calories": "25",
+      "total_fat": "0",
+      "saturated_fat": "0",
+      "cholesterol": "0",
+      "sodium": "108",
+      "total_carbohydrate": "6",
+      "dietary_fiber": "1",
+      "sugars": "5",
+      "protein": "0",
+      "vitamin_a": "54",
+      "vitamin_c": "6",
+      "calcium": "1",
+      "iron": "1"
+    }
+  ],
+  [
+    "Marinated Banh Mi Tofu",
+    [
+      "brunch"
+    ],
+    [
+      "sesame seed",
+      "soy"
+    ],
+    [
+      "Gluten Free",
+      "Nutrient Dense High",
+      "Vegan",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "85",
+      "calories": "133",
+      "total_fat": "9",
+      "saturated_fat": "2",
+      "cholesterol": "0",
+      "sodium": "188",
+      "total_carbohydrate": "3",
+      "dietary_fiber": "2",
+      "sugars": "0",
+      "protein": "12",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "8",
+      "iron": "8"
+    }
+  ],
+  [
+    "White Chocolate Raspberry Bread",
+    [
+      "brunch"
+    ],
+    [
+      "eggs",
+      "milk",
+      "soy",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Low Medium",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "61",
+      "calories": "198",
+      "total_fat": "8",
+      "saturated_fat": "2",
+      "cholesterol": "19",
+      "sodium": "160",
+      "total_carbohydrate": "30",
+      "dietary_fiber": "1",
+      "sugars": "17",
+      "protein": "3",
+      "vitamin_a": "0",
+      "vitamin_c": "1",
+      "calcium": "5",
+      "iron": "5"
+    }
+  ],
+  [
+    "Cappuccino Chocolate Chip Muffins",
+    [
+      "brunch"
+    ],
+    [
+      "eggs",
+      "milk",
+      "soy",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Low",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "54",
+      "calories": "202",
+      "total_fat": "9",
+      "saturated_fat": "3",
+      "cholesterol": "18",
+      "sodium": "145",
+      "total_carbohydrate": "27",
+      "dietary_fiber": "1",
+      "sugars": "17",
+      "protein": "2",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "0",
+      "iron": "0"
+    }
+  ],
+  [
+    "Honey Glazed Donuts",
+    [
+      "brunch"
+    ],
+    [
+      "eggs",
+      "milk",
+      "soy",
+      "wheat/barley/rye"
+    ],
+    [
+      "Nutrient Dense Low",
+      "Vegetarian",
+      "Carbon Footprint Low"
+    ],
+    {
+      "serving_size": "82",
+      "calories": "301",
+      "total_fat": "15",
+      "saturated_fat": "7",
+      "cholesterol": "0",
+      "sodium": "269",
+      "total_carbohydrate": "41",
+      "dietary_fiber": "1",
+      "sugars": "20",
+      "protein": "4",
+      "vitamin_a": "0",
+      "vitamin_c": "0",
+      "calcium": "0",
+      "iron": "8"
+    }
+  ]
+]
