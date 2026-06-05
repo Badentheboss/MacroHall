@@ -1,11 +1,11 @@
-# CollegeMacro
+# MacroHall
 
-Copied and refactored from your NutriNav backend/mobile zips.
+CollegeMacro backend and mobile app.
 
 ## Folders
 
-- `/Users/tomiwafalebita/CollegeMacro/CollegeMacro-backend`
-- `/Users/tomiwafalebita/CollegeMacro/CollegeMacro-mobile`
+- `CollegeMacro-backend`
+- `CollegeMacro-mobile`
 
 ## Backend status
 
@@ -19,4 +19,4 @@ The backend was refactored to support scaling across schools using:
 
 See backend docs:
 
-- `/Users/tomiwafalebita/CollegeMacro/CollegeMacro-backend/README.md`
+- `CollegeMacro-backend/README.md`
