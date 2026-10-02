@@ -35,9 +35,7 @@ npm install
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 
-3. Apply schema in Supabase SQL editor:
-
-- `/Users/tomiwafalebita/CollegeMacro/CollegeMacro-backend/src/db/schema.sql`
+3. Apply `src/db/schema.sql` in the Supabase SQL editor.
 
 ## Commands
 
@@ -57,11 +55,10 @@ npm install
 
 1. Add `src/config/schools/<school>.js` with listing URL and selectors.
 2. Add `src/adapters/<school>.js` that exports `listHalls` and `parseHall`.
-3. Register adapter in `src/adapters/index.js`.
-4. Register school in `src/config/schools/index.js`.
+3. Register the adapter in `src/adapters/index.js`.
+4. Register the school in `src/config/schools/index.js`.
 5. Add fixtures under `tests/fixtures/<school>/` and extend `tests/adapters.test.js`.
 
 ## Note on the mobile app
 
-The copied mobile project is still using Michigan-specific hardcoded hall names and one-table-per-hall queries.
-To fully use this backend, update mobile queries to read from normalized tables by selected `school` and `hall`.
+The mobile project still uses Michigan-specific hardcoded hall names and one-table-per-hall queries. To use this backend fully, update mobile queries to read from normalized tables by selected `school` and `hall`.
