@@ -99,6 +99,19 @@ How it works and why:
 - Push notifications for new messages (`expo-notifications`).
 - Anonymous crowd levels per hall from check-in counts, e.g. "South Quad: busy". Only show them when at least 5 people are checked in.
 
+### Profiles
+
+Each student has a profile page (Friends tab → **Your profile**, or tap anyone):
+
+- **Customizable:** emoji avatar, accent color, name, `@username`, bio, goal (bulking, cutting, maintaining, recomp), class year, favorite dining hall.
+- **Stats:** day streak, days logged in the last 30, 7-day calorie and protein averages, friend count.
+- **"Usually eats":** their most-logged foods over 30 days.
+- **Food calendar:** a month view, shaded by how much they ate each day; tap a day for every item and its macros, grouped by meal.
+- **Privacy, MyFitnessPal-style:** the food log is visible to friends by default, and each student can switch to everyone at their school or only me. Blocked people can't find or see you.
+- **Finding people:** search classmates by name or `@username`, then add them from their profile.
+
+Food history is new: the app clears the log every night, so migration 003 copies every log change into a `daily_logs` table for the campus-local day. Calendars therefore start filling in from the day the migration runs.
+
 ---
 
 ## 4. Campus food chatbot
@@ -162,10 +175,9 @@ Freemium with a higher AI limit plus the plate builder for Pro; anonymous, aggre
 
 ## 7. Launch checklist
 
-**Database (Supabase SQL editor), in order**
-1. `CollegeMacro-backend/src/db/schema.sql` (already applied if ingestion ran before)
-2. `CollegeMacro-backend/src/db/migrations/002_multi_school_social.sql`
-3. `CollegeMacro-backend/src/db/seed/schools.sql`
+**Fastest path:** on your computer, from the repo root, run `npm run setup`. It walks through the steps below one at a time: it creates and opens both `.env` files, copies the database SQL and the email template to your clipboard, and opens each Supabase and GitHub page. Use `npm run env` to just open the `.env` files.
+
+**Database (Supabase SQL editor):** paste `CollegeMacro-backend/src/db/setup.sql` and run it. It bundles `schema.sql`, migrations `002` and `003`, and the school seed, and it's safe to re-run. It expects the app's existing `public.users` table.
 
 **Supabase settings**
 - Email confirmation on, plus a `{{ .Token }}` code in the Confirm signup template ([section 5](#5-edu-only-accounts-with-a-school-picker)).

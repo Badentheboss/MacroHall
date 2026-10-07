@@ -18,6 +18,8 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { supabase } from "../../utils/config";
 import { useTheme } from "../../context/ThemeContext";
 import { fetchHalls, fetchMySchool } from "../../utils/schools";
+import { fetchProfile, searchPeople } from "../../utils/profiles";
+import Avatar from "../../components/Avatar";
 
 const REFRESH_MS = 60 * 1000;
 const REPORT_REASONS = ["Harassment", "Spam", "Something else"];
@@ -35,6 +37,8 @@ export default function Friends() {
   const styles = useMemo(() => makeStyles(isDarkMode), [isDarkMode]);
 
   const [me, setMe] = useState(null);
+  const [myProfile, setMyProfile] = useState(null);
+  const [looks, setLooks] = useState({}); // id -> { avatar_emoji, accent_color, username }
   const [myHall, setMyHall] = useState(null);
   const [ghostMode, setGhostMode] = useState(false);
   const [friends, setFriends] = useState([]);
@@ -60,6 +64,16 @@ export default function Friends() {
       supabase.from("messages").select("sender_id").eq("recipient_id", user.id).is("read_at", null),
       supabase.from("profiles").select("share_presence").eq("id", user.id).maybeSingle(),
     ]);
+
+    fetchProfile(user.id).then(setMyProfile).catch(() => {});
+    const friendIds = (friendsRes.data || []).map((f) => f.friend_id);
+    if (friendIds.length > 0) {
+      const { data: friendLooks } = await supabase
+        .from("profiles")
+        .select("id, avatar_emoji, accent_color, username")
+        .in("id", friendIds);
+      setLooks(Object.fromEntries((friendLooks || []).map((p) => [p.id, p])));
+    }
 
     const presence = presenceRes.data;
     setMyHall(presence && new Date(presence.expires_at) > new Date() ? presence.dining_halls?.name : null);
@@ -172,8 +186,7 @@ export default function Friends() {
       return;
     }
     searchTimer.current = setTimeout(async () => {
-      const { data } = await supabase.rpc("search_classmates", { p_query: text });
-      setResults(data || []);
+      setResults(await searchPeople(text).catch(() => []));
     }, 300);
   };
 
@@ -228,6 +241,8 @@ export default function Friends() {
     ]);
   };
 
+  const openProfile = (userId) => navigation.navigate("Profile", { userId });
+
   const openChat = (friend) => {
     navigation.navigate("Conversation", { friendId: friend.friend_id, friendName: friend.display_name });
   };
@@ -236,6 +251,17 @@ export default function Friends() {
 
   const header = (
     <View>
+      <TouchableOpacity style={styles.meRow} onPress={() => navigation.navigate("Profile")} accessibilityRole="button">
+        <Avatar emoji={myProfile?.avatar_emoji} color={myProfile?.accent_color} size={44} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>Your profile</Text>
+          <Text style={styles.muted}>
+            {myProfile?.username ? `@${myProfile.username}` : "Add a username so friends can find you"}
+          </Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={24} color="#888" />
+      </TouchableOpacity>
+
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <MaterialIcons name={myHall ? "place" : "location-off"} size={22} color={myHall ? "#32745f" : "#888"} />
@@ -275,7 +301,9 @@ export default function Friends() {
           <Text style={styles.sectionTitle}>Friend requests</Text>
           {incoming.map((person) => (
             <View key={person.id} style={styles.row}>
-              <Text style={styles.name}>{person.display_name}</Text>
+              <TouchableOpacity style={{ flex: 1 }} onPress={() => openProfile(person.id)}>
+                <Text style={styles.name}>{person.display_name}</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.smallPrimary} onPress={() => respond(person, true)}>
                 <Text style={styles.smallPrimaryText}>Accept</Text>
               </TouchableOpacity>
@@ -291,7 +319,7 @@ export default function Friends() {
         <Text style={styles.sectionTitle}>Add friends</Text>
         <TextInput
           style={styles.search}
-          placeholder="Search classmates by name"
+          placeholder="Search classmates by name or @username"
           placeholderTextColor="#888"
           value={query}
           onChangeText={search}
@@ -299,7 +327,13 @@ export default function Friends() {
         />
         {results.map((person) => (
           <View key={person.id} style={styles.row}>
-            <Text style={styles.name}>{person.display_name}</Text>
+            <TouchableOpacity style={styles.personTap} onPress={() => openProfile(person.id)} accessibilityRole="button">
+              <Avatar emoji={person.avatar_emoji} color={person.accent_color} size={36} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.name}>{person.display_name}</Text>
+                {person.username ? <Text style={styles.muted}>@{person.username}</Text> : null}
+              </View>
+            </TouchableOpacity>
             {person.friendship === "none" && (
               <TouchableOpacity style={styles.smallPrimary} onPress={() => sendRequest(person)}>
                 <Text style={styles.smallPrimaryText}>Add</Text>
@@ -334,12 +368,15 @@ export default function Friends() {
         renderItem={({ item: friend }) => (
           <TouchableOpacity
             style={styles.friendRow}
-            onPress={() => openChat(friend)}
+            onPress={() => openProfile(friend.friend_id)}
             onLongPress={() => friendActions(friend)}
             accessibilityRole="button"
-            accessibilityHint="Opens chat. Long press for more options."
+            accessibilityHint="Opens their profile. Long press for more options."
           >
-            <View style={[styles.statusDot, { backgroundColor: friend.hall_name ? "#32745f" : isDarkMode ? "#444" : "#ccc" }]} />
+            <View>
+              <Avatar emoji={looks[friend.friend_id]?.avatar_emoji} color={looks[friend.friend_id]?.accent_color} size={42} />
+              <View style={[styles.statusDot, styles.statusBadge, { backgroundColor: friend.hall_name ? "#32745f" : isDarkMode ? "#444" : "#ccc" }]} />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{friend.display_name}</Text>
               <Text style={friend.hall_name ? styles.atHall : styles.muted}>
@@ -351,7 +388,9 @@ export default function Friends() {
                 <Text style={styles.unreadText}>{unread[friend.friend_id]}</Text>
               </View>
             )}
-            <MaterialIcons name="chat-bubble-outline" size={22} color={isDarkMode ? "#E0E0E0" : "#32745f"} />
+            <TouchableOpacity onPress={() => openChat(friend)} hitSlop={10} accessibilityLabel={`Message ${friend.display_name}`}>
+              <MaterialIcons name="chat-bubble-outline" size={22} color={isDarkMode ? "#E0E0E0" : "#32745f"} />
+            </TouchableOpacity>
           </TouchableOpacity>
         )}
         contentContainerStyle={{ paddingBottom: 40 }}
@@ -422,6 +461,9 @@ const makeStyles = (isDarkMode) => {
       borderColor: border,
     },
     statusDot: { width: 10, height: 10, borderRadius: 5 },
+    statusBadge: { position: "absolute", right: -1, bottom: -1, width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: surface },
+    meRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: surface, borderRadius: 16, padding: 14, marginTop: 16, borderWidth: 1, borderColor: border },
+    personTap: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
     name: { fontSize: 16, fontWeight: "600", color: text, flex: 1 },
     atHall: { fontSize: 13, color: "#32745f", fontWeight: "600", marginTop: 2 },
     muted: { fontSize: 13, color: subtle, marginTop: 2 },

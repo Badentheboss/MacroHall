@@ -17,6 +17,8 @@ import Friends from "./(tabs)/Friends";
 import Ask from "./(tabs)/Ask";
 import DietaryPreferences from "./DietaryPreferences";
 import Conversation from "./Conversation";
+import PersonProfile from "./Profile";
+import EditProfile from "./EditProfile";
 
 import { RootStackParamList } from "../types";
 import { ThemeProvider } from "../context/ThemeContext";
@@ -179,6 +181,27 @@ export default function Layout() {
           options={{
             headerShown: true,
             headerBackTitle: "Friends",
+            headerTintColor: "#32745f",
+          }}
+        />
+
+        <Stack.Screen
+          name="Profile"
+          component={PersonProfile}
+          options={{
+            headerShown: true,
+            headerBackTitle: "Back",
+            headerTintColor: "#32745f",
+          }}
+        />
+
+        <Stack.Screen
+          name="EditProfile"
+          component={EditProfile}
+          options={{
+            headerShown: true,
+            headerTitle: "Edit Profile",
+            presentation: "modal",
             headerTintColor: "#32745f",
           }}
         />

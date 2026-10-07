@@ -13,4 +13,6 @@ export type RootStackParamList = {
   Friends: undefined; // Tab screen
   Ask: undefined; // Tab screen
   Conversation: { friendId: string; friendName: string };
+  Profile: { userId?: string } | undefined; // omit userId for your own profile
+  EditProfile: undefined;
 };
