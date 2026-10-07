@@ -1,27 +1,19 @@
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useTheme } from "../context/ThemeContext";
-import Avatar from "../components/Avatar";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Button, Card, Chip, ChipRow, FadeIn, ProfilePanel, Row, Screen, Tap, TextField, Txt } from "../components/kit";
+import { radius, space, useAppTheme, useStyles } from "../theme";
 import { fetchHalls, fetchMySchool } from "../utils/schools";
 import { ACCENTS, AVATARS, GOALS, VISIBILITY, fetchProfile, getMyUserId, updateMyProfile } from "../utils/profiles";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const CLASS_YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR + i);
 
+// Hinge-style profile editor: a live preview of your card on top, then
+// pickers for your emoji and color, your details, and who sees your log.
 export default function EditProfile({ navigation }) {
-  const { isDarkMode } = useTheme();
-  const styles = useMemo(() => makeStyles(isDarkMode), [isDarkMode]);
+  const { c } = useAppTheme();
+  const styles = useStyles(makeStyles);
 
   const [form, setForm] = useState(null);
   const [halls, setHalls] = useState([]);
@@ -71,164 +63,234 @@ export default function EditProfile({ navigation }) {
 
   if (!form) {
     return (
-      <View style={[styles.container, { alignItems: "center", justifyContent: "center" }]}>
-        <ActivityIndicator color="#32745f" />
-      </View>
+      <Screen scroll={false} style={styles.center}>
+        <ActivityIndicator color={c.muted} />
+      </Screen>
     );
   }
 
+  const previewSubtitle = [form.username ? `@${form.username}` : null, form.class_year ? `Class of ${form.class_year}` : null].filter(Boolean).join(" · ");
+
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={{ alignItems: "center", marginBottom: 8 }}>
-          <Avatar emoji={form.avatar_emoji} color={form.accent_color} size={84} />
-        </View>
-
-        <Text style={styles.label}>Avatar</Text>
-        <View style={styles.wrap}>
-          {AVATARS.map((emoji) => (
-            <TouchableOpacity
-              key={emoji}
-              onPress={() => set("avatar_emoji", emoji)}
-              style={[styles.emoji, form.avatar_emoji === emoji && { borderColor: form.accent_color, borderWidth: 2 }]}
-              accessibilityLabel={`Avatar ${emoji}`}
-            >
-              <Text style={{ fontSize: 24 }}>{emoji}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={styles.label}>Color</Text>
-        <View style={styles.wrap}>
-          {ACCENTS.map((color) => (
-            <TouchableOpacity
-              key={color}
-              onPress={() => set("accent_color", color)}
-              style={[styles.swatch, { backgroundColor: color }, form.accent_color === color && styles.swatchSelected]}
-              accessibilityLabel={`Color ${color}`}
-            />
-          ))}
-        </View>
-
-        <Text style={styles.label}>Name</Text>
-        <TextInput style={styles.input} value={form.display_name} onChangeText={(v) => set("display_name", v)} maxLength={60} placeholderTextColor="#888" />
-
-        <Text style={styles.label}>Username</Text>
-        <View style={styles.usernameRow}>
-          <Text style={styles.at}>@</Text>
-          <TextInput
-            style={[styles.input, { flex: 1 }]}
-            value={form.username}
-            onChangeText={(v) => set("username", v.replace(/[^a-zA-Z0-9_.]/g, "").toLowerCase())}
-            autoCapitalize="none"
-            autoCorrect={false}
-            maxLength={20}
-            placeholder="so friends can find you"
-            placeholderTextColor="#888"
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <Screen contentStyle={styles.content}>
+        <FadeIn index={0}>
+          <ProfilePanel
+            emoji={form.avatar_emoji}
+            color={form.accent_color}
+            name={form.display_name.trim() || "Your name"}
+            subtitle={previewSubtitle || "This is how friends see you"}
+            height={320}
           />
-        </View>
+        </FadeIn>
 
-        <Text style={styles.label}>Bio</Text>
-        <TextInput
-          style={[styles.input, { height: 80, textAlignVertical: "top", paddingTop: 12 }]}
-          value={form.bio}
-          onChangeText={(v) => set("bio", v)}
-          maxLength={160}
-          multiline
-          placeholder="PPL 6x/week · chasing 180g protein"
-          placeholderTextColor="#888"
-        />
-        <Text style={styles.counter}>{form.bio.length}/160</Text>
+        <FadeIn index={1}>
+          <Section title="Avatar" caption="Pick the emoji on your profile.">
+            <View style={styles.grid}>
+              {AVATARS.map((emoji) => {
+                const selected = form.avatar_emoji === emoji;
+                return (
+                  <View key={emoji} style={styles.emojiCell}>
+                    <Tap
+                      onPress={() => set("avatar_emoji", emoji)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Avatar ${emoji}`}
+                      accessibilityState={{ selected }}
+                      style={[styles.ringWrap, selected && styles.ringOn]}
+                    >
+                      <View style={styles.emoji}>
+                        <Txt style={styles.emojiText}>{emoji}</Txt>
+                      </View>
+                    </Tap>
+                  </View>
+                );
+              })}
+            </View>
+          </Section>
+        </FadeIn>
 
-        <Text style={styles.label}>Goal</Text>
-        <View style={styles.wrap}>
-          {GOALS.map((goal) => (
-            <Chip key={goal.key} active={form.goal === goal.key} color={form.accent_color} onPress={() => toggle("goal", goal.key)} styles={styles}>
-              {goal.emoji} {goal.label}
-            </Chip>
-          ))}
-        </View>
+        <FadeIn index={2}>
+          <Section title="Color" caption="Tints your profile card.">
+            <View style={styles.grid}>
+              {ACCENTS.map((color) => {
+                const selected = form.accent_color === color;
+                return (
+                  <View key={color} style={styles.swatchCell}>
+                    <Tap
+                      onPress={() => set("accent_color", color)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Color ${color}`}
+                      accessibilityState={{ selected }}
+                      style={[styles.swatchRing, selected && styles.ringOn]}
+                    >
+                      <View style={[styles.swatch, { backgroundColor: color }]}>
+                        {selected ? <Ionicons name="checkmark" size={18} color="#FFFFFF" /> : null}
+                      </View>
+                    </Tap>
+                  </View>
+                );
+              })}
+            </View>
+          </Section>
+        </FadeIn>
 
-        <Text style={styles.label}>Class of</Text>
-        <View style={styles.wrap}>
-          {CLASS_YEARS.map((year) => (
-            <Chip key={year} active={form.class_year === year} color={form.accent_color} onPress={() => toggle("class_year", year)} styles={styles}>
-              {year}
-            </Chip>
-          ))}
-        </View>
+        <FadeIn index={3}>
+          <Section title="About you">
+            <TextField
+              label="Name"
+              value={form.display_name}
+              onChangeText={(v) => set("display_name", v)}
+              maxLength={60}
+              placeholder="The name friends will see"
+            />
+            <TextField
+              label="Username"
+              icon="at"
+              value={form.username}
+              onChangeText={(v) => set("username", v.replace(/[^a-zA-Z0-9_.]/g, "").toLowerCase())}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={20}
+              placeholder="so friends can find you"
+            />
+            <TextField
+              label="Bio"
+              value={form.bio}
+              onChangeText={(v) => set("bio", v)}
+              maxLength={160}
+              multiline
+              placeholder="PPL 6x/week · chasing 180g protein"
+              inputStyle={styles.bioInput}
+              hint={`${form.bio.length}/160`}
+            />
+          </Section>
+        </FadeIn>
 
-        {halls.length > 0 && (
-          <>
-            <Text style={styles.label}>Favorite dining hall</Text>
+        <FadeIn index={4}>
+          <Section title="Goal">
             <View style={styles.wrap}>
-              {halls.map((hall) => (
-                <Chip key={hall.id} active={form.favorite_hall_id === hall.id} color={form.accent_color} onPress={() => toggle("favorite_hall_id", hall.id)} styles={styles}>
-                  {hall.name}
-                </Chip>
+              {GOALS.map((goal) => (
+                <Chip key={goal.key} label={goal.label} active={form.goal === goal.key} onPress={() => toggle("goal", goal.key)} />
               ))}
             </View>
-          </>
+          </Section>
+        </FadeIn>
+
+        <FadeIn index={5}>
+          <Section title="Class of">
+            <View style={styles.bleed}>
+              <ChipRow style={styles.bleedContent}>
+                {CLASS_YEARS.map((year) => (
+                  <Chip key={year} label={String(year)} active={form.class_year === year} onPress={() => toggle("class_year", year)} />
+                ))}
+              </ChipRow>
+            </View>
+          </Section>
+        </FadeIn>
+
+        {halls.length > 0 && (
+          <FadeIn index={6}>
+            <Section title="Favorite dining hall">
+              <View style={styles.bleed}>
+                <ChipRow style={styles.bleedContent}>
+                  {halls.map((hall) => (
+                    <Chip
+                      key={hall.id}
+                      label={hall.name}
+                      icon="location-outline"
+                      active={form.favorite_hall_id === hall.id}
+                      onPress={() => toggle("favorite_hall_id", hall.id)}
+                    />
+                  ))}
+                </ChipRow>
+              </View>
+            </Section>
+          </FadeIn>
         )}
 
-        <Text style={styles.label}>Who can see what you eat</Text>
-        {VISIBILITY.map((option) => (
-          <TouchableOpacity
-            key={option.key}
-            style={[styles.option, form.log_visibility === option.key && { borderColor: form.accent_color }]}
-            onPress={() => set("log_visibility", option.key)}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: form.log_visibility === option.key }}
-          >
-            <Text style={styles.optionTitle}>{option.label}</Text>
-            <Text style={styles.optionHint}>{option.hint}</Text>
-          </TouchableOpacity>
-        ))}
+        <FadeIn index={7}>
+          <Section title="Who can see what you eat">
+            <View>
+              {VISIBILITY.map((option, index) => {
+                const selected = form.log_visibility === option.key;
+                return (
+                  <Tap
+                    key={option.key}
+                    onPress={() => set("log_visibility", option.key)}
+                    scaleTo={0.985}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected, checked: selected }}
+                    accessibilityLabel={`${option.label}. ${option.hint}`}
+                    style={index > 0 ? styles.divided : null}
+                  >
+                    <Row
+                      title={option.label}
+                      subtitle={option.hint}
+                      trailing={
+                        <View style={[styles.check, selected && styles.checkOn]}>
+                          {selected ? <Ionicons name="checkmark" size={16} color={c.inverse} /> : null}
+                        </View>
+                      }
+                    />
+                  </Tap>
+                );
+              })}
+            </View>
+          </Section>
+        </FadeIn>
 
-        <TouchableOpacity style={[styles.save, { backgroundColor: form.accent_color }]} onPress={save} disabled={saving}>
-          <Text style={styles.saveText}>{saving ? "Saving..." : "Save"}</Text>
-        </TouchableOpacity>
-      </ScrollView>
+        <Button title="Save" size="lg" onPress={save} loading={saving} disabled={saving} accessibilityLabel={saving ? "Saving" : "Save"} />
+      </Screen>
     </KeyboardAvoidingView>
   );
 }
 
-function Chip({ active, color, onPress, children, styles }) {
+function Section({ title, caption, children }) {
+  const styles = useStyles(makeStyles);
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[styles.chip, active && { backgroundColor: color, borderColor: color }]}
-      accessibilityState={{ selected: active }}
-    >
-      <Text style={[styles.chipText, active && { color: "#fff" }]}>{children}</Text>
-    </TouchableOpacity>
+    <Card style={styles.section}>
+      <View style={{ gap: 2 }}>
+        <Txt variant="title">{title}</Txt>
+        {caption ? (
+          <Txt variant="caption" tone="muted">
+            {caption}
+          </Txt>
+        ) : null}
+      </View>
+      {children}
+    </Card>
   );
 }
 
-const makeStyles = (isDarkMode) => {
-  const text = isDarkMode ? "#E0E0E0" : "#222";
-  const subtle = isDarkMode ? "#999" : "#666";
-  const surface = isDarkMode ? "#1E1E1E" : "#fff";
-  const border = isDarkMode ? "#333" : "rgba(50,116,95,0.2)";
-
-  return StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDarkMode ? "#121212" : "#f5f7fa" },
-    content: { padding: 20, paddingBottom: 48 },
-    label: { fontSize: 14, fontWeight: "700", color: text, marginTop: 18, marginBottom: 8 },
-    wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    emoji: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: surface, borderWidth: 1, borderColor: border },
-    swatch: { width: 34, height: 34, borderRadius: 17 },
-    swatchSelected: { borderWidth: 3, borderColor: isDarkMode ? "#fff" : "#222" },
-    input: { height: 50, borderWidth: 1.5, borderColor: border, borderRadius: 12, paddingHorizontal: 14, fontSize: 16, backgroundColor: surface, color: text },
-    usernameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-    at: { fontSize: 18, fontWeight: "700", color: subtle },
-    counter: { fontSize: 12, color: subtle, alignSelf: "flex-end", marginTop: 4 },
-    chip: { borderWidth: 1.5, borderColor: border, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12, backgroundColor: surface },
-    chipText: { fontSize: 14, fontWeight: "600", color: text },
-    option: { borderWidth: 1.5, borderColor: border, borderRadius: 12, padding: 12, marginBottom: 8, backgroundColor: surface },
-    optionTitle: { fontSize: 15, fontWeight: "700", color: text },
-    optionHint: { fontSize: 13, color: subtle, marginTop: 2 },
-    save: { marginTop: 24, borderRadius: 12, paddingVertical: 15, alignItems: "center" },
-    saveText: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  });
-};
+const makeStyles = (c) => ({
+  flex: { flex: 1, backgroundColor: c.bg },
+  center: { alignItems: "center", justifyContent: "center" },
+  content: { paddingBottom: space.xxxl + space.xl },
+  section: { gap: space.lg },
+  grid: { flexDirection: "row", flexWrap: "wrap", rowGap: space.sm },
+  emojiCell: { width: `${100 / 6}%`, alignItems: "center" },
+  ringWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.sunken,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  ringOn: { borderColor: c.ink },
+  emoji: { alignItems: "center", justifyContent: "center" },
+  emojiText: { fontSize: 24, lineHeight: 30 },
+  swatchCell: { width: "20%", alignItems: "center" },
+  swatchRing: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "transparent" },
+  swatch: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  // Let horizontal chip rows scroll edge to edge of the card.
+  bleed: { marginHorizontal: -(space.lg + 4) },
+  bleedContent: { paddingHorizontal: space.lg + 4 },
+  bioInput: { minHeight: 88, textAlignVertical: "top" },
+  wrap: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  divided: { borderTopWidth: 1, borderTopColor: c.hairline },
+  check: { width: 24, height: 24, borderRadius: radius.pill, borderWidth: 1.5, borderColor: c.faint, alignItems: "center", justifyContent: "center" },
+  checkOn: { backgroundColor: c.ink, borderColor: c.ink },
+});

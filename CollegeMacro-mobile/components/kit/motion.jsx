@@ -6,6 +6,7 @@ import { AccessibilityInfo, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeInDown,
+  ReduceMotion,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
@@ -27,7 +28,12 @@ AccessibilityInfo.isReduceMotionEnabled?.()
 
 // Fades and lifts children in on mount. Pass `index` to stagger lists.
 export function FadeIn({ children, index = 0, style, ...rest }) {
-  const entering = reduceMotion ? undefined : FadeInDown.duration(motion.slow).delay(Math.min(index, 8) * motion.stagger).easing(easeOut).withInitialValues({ transform: [{ translateY: 10 }] });
+  // No withInitialValues: on web Reanimated then treats it as a custom
+  // animation whose cleanup pins the element with position: absolute.
+  const entering = FadeInDown.duration(motion.slow)
+    .delay(Math.min(index, 8) * motion.stagger)
+    .easing(easeOut)
+    .reduceMotion(ReduceMotion.System);
   return (
     <Animated.View entering={entering} style={style} {...rest}>
       {children}
