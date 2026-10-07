@@ -17,7 +17,8 @@ import Svg, { Circle } from 'react-native-svg';
 import { motion, type, useAppTheme } from '../../theme';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const easeOut = Easing.out(Easing.cubic);
+// Cubic ease-out as a bezier: react-native-web supports bezier but not Easing.out(cubic).
+const easeOut = Easing.bezier(0.33, 1, 0.68, 1);
 
 let reduceMotion = false;
 AccessibilityInfo.isReduceMotionEnabled?.()
@@ -109,7 +110,7 @@ export function LiveDot({ color, size = 8 }) {
   const { c } = useAppTheme();
   const pulse = useSharedValue(1);
   useEffect(() => {
-    if (!reduceMotion) pulse.value = withRepeat(withTiming(0.35, { duration: 900, easing: Easing.inOut(Easing.quad) }), -1, true);
+    if (!reduceMotion) pulse.value = withRepeat(withTiming(0.35, { duration: 900, easing: Easing.bezier(0.45, 0, 0.55, 1) }), -1, true);
   }, [pulse]);
   const animated = useAnimatedStyle(() => ({ opacity: pulse.value }));
   return <Animated.View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: color || c.accent }, animated]} />;

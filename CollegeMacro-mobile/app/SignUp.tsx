@@ -1,24 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
-  Text,
   TextInput,
-  TouchableOpacity,
   Alert,
-  StyleSheet,
   StatusBar,
   Platform,
   KeyboardAvoidingView,
   Keyboard,
   ScrollView,
   Modal,
+  Pressable,
 } from "react-native";
+import Animated, { Easing, ReduceMotion, SlideInDown } from "react-native-reanimated";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { StackNavigationProp } from "@react-navigation/stack";
+import { Ionicons } from "@expo/vector-icons";
 import { RootStackParamList } from "../types"; // Import types
 import { supabase } from "../utils/config";
 import { useNavigation } from "@react-navigation/native";
-import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import PrivacyPolicy from "../components/PrivacyPolicy";
 import SchoolPicker from "../components/SchoolPicker";
@@ -30,6 +30,8 @@ import {
   normalizeEmail,
 } from "../utils/schools";
 import { ensureUserProfile } from "../utils/profile";
+import { motion, useAppTheme, useStyles } from "../theme";
+import { Button, FadeIn, IconButton, ProgressBar, Tap, TextField, Txt } from "../components/kit";
 
 type School = {
   id: number;
@@ -38,13 +40,103 @@ type School = {
   short_name: string | null;
   email_domains: string[];
   status: "live" | "coming_soon";
+  city?: string | null;
+  state?: string | null;
 };
 
 type SignUpScreenNavigationProp = StackNavigationProp<RootStackParamList, "SignUp">;
 
+// One question per screen, Hinge style. "verify" comes after the account is created.
+const FORM_STEPS = ["school", "name", "email", "birthday", "password"] as const;
+type FormStep = (typeof FORM_STEPS)[number];
+type Step = FormStep | "verify";
+
+type FieldErrors = Partial<Record<"school" | "email" | "birthday" | "password" | "confirmPassword", string>>;
+
+const STEP_COPY: Record<Step, { icon: keyof typeof Ionicons.glyphMap; title: string }> = {
+  school: { icon: "school-outline", title: "What school do you go to?" },
+  name: { icon: "person-outline", title: "What's your name?" },
+  email: { icon: "mail-outline", title: "What's your school email?" },
+  birthday: { icon: "calendar-outline", title: "When's your birthday?" },
+  password: { icon: "lock-closed-outline", title: "Create a password" },
+  verify: { icon: "shield-checkmark-outline", title: "Check your email" },
+};
+
+// Whole years between a birth date and today.
+const ageOn = (birthDate: Date) => {
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age -= 1;
+  }
+  return age;
+};
+
+// Bottom sheet on a dimmed backdrop: grabber, serif title, then content.
+function Sheet({
+  visible,
+  onClose,
+  title,
+  body,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  body?: string;
+  children: React.ReactNode;
+}) {
+  const { c, isDark, space, radius } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, justifyContent: "flex-end" }}>
+        <Pressable
+          style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: c.overlay }}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
+        <Animated.View
+          entering={SlideInDown.duration(motion.base).easing(Easing.bezier(0.33, 1, 0.68, 1)).reduceMotion(ReduceMotion.System)}
+          accessibilityViewIsModal
+          style={{
+            backgroundColor: isDark ? c.surface : c.bg,
+            borderTopLeftRadius: radius.xl,
+            borderTopRightRadius: radius.xl,
+            paddingHorizontal: space.xl,
+            paddingTop: space.md,
+            paddingBottom: insets.bottom + space.xl,
+            gap: space.lg,
+            width: "100%",
+            maxWidth: 560,
+            alignSelf: "center",
+          }}
+        >
+          <View style={{ alignSelf: "center", width: 40, height: 5, borderRadius: radius.pill, backgroundColor: c.hairline }} />
+          <View style={{ gap: space.sm, marginTop: space.sm }}>
+            <Txt variant="h1" accessibilityRole="header">
+              {title}
+            </Txt>
+            {body ? (
+              <Txt variant="body" tone="muted">
+                {body}
+              </Txt>
+            ) : null}
+          </View>
+          {children}
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 export default function SignUp() {
   const navigation = useNavigation<SignUpScreenNavigationProp>();
   const { isDarkMode } = useTheme();
+  const { c, isDark, type, fonts } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const [formData, setFormData] = useState({
     email: "",
     username: "",
@@ -61,7 +153,8 @@ export default function SignUp() {
   const [schools, setSchools] = useState<School[]>([]);
   const [school, setSchool] = useState<School | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
-  const [step, setStep] = useState<"form" | "verify">("form");
+  const [step, setStep] = useState<Step>("school");
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [code, setCode] = useState("");
   const [missingVisible, setMissingVisible] = useState(false);
   const [missingSchoolName, setMissingSchoolName] = useState("");
@@ -79,11 +172,15 @@ export default function SignUp() {
   const passwordInputRef = useRef<TextInput>(null);
   const confirmPasswordInputRef = useRef<TextInput>(null);
 
+  const clearError = (field: keyof FieldErrors) =>
+    setErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+
   const onChange = (field: string, value: string) => {
     setFormData((prevState) => ({
       ...prevState,
       [field]: value,
     }));
+    if (field === "email" || field === "password" || field === "confirmPassword") clearError(field);
   };
 
   const offerWaitlist = (target: School) => {
@@ -171,6 +268,8 @@ export default function SignUp() {
     Alert.alert(error ? "Couldn't resend" : "Code sent", error ? error.message : `Check ${normalizeEmail(email)}.`);
   };
 
+  // Final check and account creation. Every rule is checked again here even
+  // though each step validates its own fields inline on the way.
   const onSubmit = async () => {
     if (!school) {
       Alert.alert("Pick your school", "Choose the college you attend first.");
@@ -216,14 +315,7 @@ export default function SignUp() {
       return;
     }
 
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age -= 1;
-    }
-
-    if (age < 13) {
+    if (ageOn(birthDate) < 13) {
       Alert.alert("Sorry", "You must be at least 13 years old to create an account.");
       return;
     }
@@ -257,179 +349,14 @@ export default function SignUp() {
     }
   };
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: isDarkMode ? '#121212' : '#fff',
-      paddingTop: '15%',
-      paddingHorizontal: 20,
-    },
-    scrollContent: {
-      paddingBottom: 40,
-      flexGrow: 1,
-    },
-    headerContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 30,
-      position: 'relative',
-    },
-    backButton: {
-      position: 'absolute',
-      left: 0,
-      zIndex: 1,
-      padding: 5,
-    },
-    title: {
-      fontSize: 28,
-      fontWeight: "800",
-      color: "#32745f",
-      flex: 1,
-      textAlign: 'center',
-    },
-    input: {
-      height: 55,
-      width: "100%",
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.2)",
-      borderWidth: 1.5,
-      borderRadius: 12,
-      paddingHorizontal: 15,
-      marginBottom: 20,
-      fontSize: 16,
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-    },
-    passwordContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.2)",
-      borderWidth: 1.5,
-      borderRadius: 12,
-      width: "100%",
-      paddingHorizontal: 15,
-      marginBottom: 20,
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-    },
-    passwordInput: {
-      flex: 1,
-      fontSize: 16,
-      height: 55,
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-    },
-    button: {
-      backgroundColor: "#32745f",
-      paddingVertical: 16,
-      width: "100%",
-      borderRadius: 12,
-      alignItems: "center",
-      marginBottom: 15,
-      shadowColor: isDarkMode ? '#000' : "#32745f",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.1,
-      shadowRadius: 12,
-      elevation: 5,
-    },
-    buttonText: {
-      color: "#fff",
-      fontSize: 18,
-      fontWeight: "700",
-      letterSpacing: 0.5,
-    },
-    linkText: {
-      marginTop: 15,
-      color: isDarkMode ? '#E0E0E0' : "#2E7D32",
-      fontSize: 16,
-      textAlign: "center",
-      fontWeight: "600",
-    },
-    policySection: {
-      marginTop: 32,
-      marginBottom: 16,
-    },
-    helperText: {
-      fontSize: 16,
-      lineHeight: 22,
-      color: isDarkMode ? '#D3D3D3' : '#555',
-      marginBottom: 20,
-      textAlign: 'center',
-    },
-    codeInput: {
-      fontSize: 24,
-      letterSpacing: 8,
-      textAlign: 'center',
-    },
-    datePickerButton: {
-      height: 55,
-      width: "100%",
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.2)",
-      borderWidth: 1.5,
-      borderRadius: 12,
-      paddingHorizontal: 15,
-      marginBottom: 20,
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    datePickerText: {
-      fontSize: 16,
-      color: isDarkMode ? '#E0E0E0' : '#32745f',
-    },
-    datePickerPlaceholderText: {
-      color: isDarkMode ? '#888' : '#999',
-    },
-    datePickerModal: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.4)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 20,
-    },
-    datePickerContainer: {
-      backgroundColor: isDarkMode ? '#1f1f1f' : '#fff',
-      borderRadius: 16,
-      padding: 20,
-      width: '90%',
-      maxWidth: 360,
-      alignItems: 'center',
-    },
-    datePickerTitle: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: isDarkMode ? '#E0E0E0' : '#32745f',
-      textAlign: 'center',
-      marginBottom: 16,
-    },
-    datePickerWheelWrapper: {
-      width: '100%',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    datePickerWheel: {
-      width: Platform.OS === 'ios' ? 320 : '100%',
-      alignSelf: 'center',
-    },
-    datePickerDoneButton: {
-      marginTop: 16,
-      alignSelf: 'center',
-      backgroundColor: '#32745f',
-      paddingVertical: 10,
-      paddingHorizontal: 24,
-      borderRadius: 10,
-    },
-    datePickerDoneText: {
-      color: '#fff',
-      fontWeight: '600',
-      fontSize: 16,
-    },
-  });
-
   const handleSubmit = () => {
     onSubmit();
+  };
+
+  const setBirthdayFromDate = (selectedDate: Date) => {
+    setBirthdayDate(selectedDate);
+    setBirthday(selectedDate.toISOString().split('T')[0]);
+    clearError("birthday");
   };
 
   const openDatePicker = () => {
@@ -442,8 +369,7 @@ export default function SignUp() {
         maximumDate: new Date(),
         onChange: (_, selectedDate) => {
           if (selectedDate) {
-            setBirthdayDate(selectedDate);
-            setBirthday(selectedDate.toISOString().split('T')[0]);
+            setBirthdayFromDate(selectedDate);
           }
         },
       });
@@ -453,189 +379,387 @@ export default function SignUp() {
     setShowDatePicker(true);
   };
 
-  return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
-    >
-      <StatusBar
-        barStyle={isDarkMode ? "light-content" : "dark-content"}
-        backgroundColor={isDarkMode ? "#121212" : "#fff"}
+  // Inline checks for the current step; returns an error map (empty = OK).
+  const validateStep = (current: FormStep): FieldErrors => {
+    switch (current) {
+      case "school":
+        return school ? {} : { school: "Choose the college you attend first." };
+      case "email":
+        if (!isEduEmail(email)) return { email: "MacroHall is for students. Sign up with your .edu email." };
+        if (school && !emailMatchesSchool(email, school)) {
+          return { email: `Use your @${school.email_domains[0]} email for ${school.name}.` };
+        }
+        return {};
+      case "birthday": {
+        if (!birthday) return { birthday: "Please select your date of birth." };
+        const birthDate = new Date(birthday);
+        if (Platform.OS === "web" && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
+          return { birthday: "Use the format YYYY-MM-DD." };
+        }
+        if (Number.isNaN(birthDate.getTime())) return { birthday: "Please choose a valid date of birth." };
+        if (ageOn(birthDate) < 13) return { birthday: "You must be at least 13 years old to create an account." };
+        return {};
+      }
+      case "password":
+        if (password.length < 6) return { password: "Password should be at least 6 characters long." };
+        if (password !== confirmPassword) return { confirmPassword: "Passwords do not match." };
+        return {};
+      default:
+        return {};
+    }
+  };
+
+  const stepIndex = step === "verify" ? FORM_STEPS.length : FORM_STEPS.indexOf(step);
+
+  const goNext = () => {
+    if (step === "verify") return;
+    if (step === "school" && school && school.status !== "live") {
+      offerWaitlist(school);
+      return;
+    }
+    const found = validateStep(step);
+    if (Object.keys(found).length) {
+      setErrors(found);
+      return;
+    }
+    setErrors({});
+    if (step === "password") {
+      handleSubmit();
+      return;
+    }
+    setStep(FORM_STEPS[stepIndex + 1]);
+  };
+
+  const goBack = () => {
+    if (loading) return;
+    setErrors({});
+    if (step === "verify") {
+      setStep("email");
+    } else if (stepIndex > 0) {
+      setStep(FORM_STEPS[stepIndex - 1]);
+    } else {
+      navigation.goBack();
+    }
+  };
+
+  const schoolLabel = school?.short_name || school?.name;
+  const stepBody: Record<Step, string> = {
+    school: "MacroHall works with your campus dining halls, so we start there.",
+    name: "This is how your friends will see you.",
+    email: `We'll send a code to confirm you're a student${schoolLabel ? ` at ${schoolLabel}` : ""}.`,
+    birthday: "You need to be at least 13 to use MacroHall.",
+    password: "Use at least 6 characters.",
+    verify: `We sent a code to ${normalizeEmail(email)}. Enter it to confirm you're a student at ${schoolLabel}.`,
+  };
+
+  const passwordToggle = (shown: boolean, toggle: () => void, label: string) => (
+    <View style={styles.eye}>
+      <IconButton
+        name={shown ? "eye-off-outline" : "eye-outline"}
+        label={shown ? `Hide ${label}` : `Show ${label}`}
+        onPress={toggle}
+        size={20}
+        color={c.muted}
       />
+    </View>
+  );
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.headerContainer}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <MaterialIcons 
-              name="arrow-back" 
-              size={28} 
-              color={isDarkMode ? '#E0E0E0' : '#32745f'} 
-            />
-          </TouchableOpacity>
-          <Text style={styles.title}>{step === "verify" ? "Verify Email" : "Sign Up"}</Text>
-        </View>
-
-        {step === "verify" ? (
-          <View>
-            <Text style={styles.helperText}>
-              We sent a code to {normalizeEmail(email)}. Enter it to confirm you're a student at {school?.short_name || school?.name}.
-            </Text>
-            <TextInput
-              style={[styles.input, styles.codeInput]}
-              placeholder="Code"
-              value={code}
-              onChangeText={(text) => setCode(text.replace(/[^0-9]/g, ""))}
-              keyboardType="number-pad"
-              textContentType="oneTimeCode"
-              autoComplete="one-time-code"
-              maxLength={10}
-              placeholderTextColor="#888"
-              editable={!loading}
-            />
-            <TouchableOpacity style={styles.button} onPress={verifyCode} disabled={loading}>
-              <Text style={styles.buttonText}>{loading ? "Verifying..." : "Verify"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={resendCode} disabled={loading}>
-              <Text style={styles.linkText}>Didn't get it? Resend code</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setStep("form")} disabled={loading}>
-              <Text style={styles.linkText}>Use a different email</Text>
-            </TouchableOpacity>
+  const renderStep = () => {
+    switch (step) {
+      case "school":
+        return (
+          <View style={styles.fields}>
+            <Tap
+              onPress={() => {
+                clearError("school");
+                setPickerVisible(true);
+              }}
+              disabled={loading}
+              scaleTo={0.985}
+              accessibilityRole="button"
+              accessibilityLabel="Pick your school"
+              style={[styles.schoolCard, errors.school ? styles.schoolCardError : null]}
+            >
+              <View style={[styles.schoolDisc, school ? styles.schoolDiscActive : null]}>
+                {school ? (
+                  <Txt variant="h2" tone="accent">
+                    {(school.short_name || school.name).charAt(0).toUpperCase()}
+                  </Txt>
+                ) : (
+                  <Ionicons name="search" size={20} color={c.ink} />
+                )}
+              </View>
+              <View style={styles.flex}>
+                <Txt variant="bodyStrong" numberOfLines={2}>
+                  {school ? school.name : "Select your school"}
+                </Txt>
+                <Txt variant="caption" tone="muted" numberOfLines={1}>
+                  {school
+                    ? [[school.city, school.state].filter(Boolean).join(", "), `@${school.email_domains?.[0] || ""}`]
+                        .filter((part) => part && part !== "@")
+                        .join("  ·  ")
+                    : "Search by name or email domain"}
+                </Txt>
+              </View>
+              {school ? (
+                <Txt variant="small" tone="accent" style={{ fontFamily: fonts.bold }}>
+                  Change
+                </Txt>
+              ) : (
+                <Ionicons name="chevron-forward" size={20} color={c.muted} />
+              )}
+            </Tap>
+            {errors.school ? (
+              <Txt variant="caption" tone="accent">
+                {errors.school}
+              </Txt>
+            ) : null}
           </View>
+        );
+      case "name":
+        return (
+          <TextField
+            label="Name"
+            placeholder="First and last name"
+            value={username}
+            onChangeText={(text: string) => onChange("username", text)}
+            autoCapitalize="words"
+            autoComplete="name"
+            textContentType="name"
+            returnKeyType="next"
+            onSubmitEditing={goNext}
+            autoFocus
+          />
+        );
+      case "email":
+        return (
+          <TextField
+            ref={emailInputRef}
+            label="School email"
+            icon="mail-outline"
+            placeholder={school?.email_domains?.length ? `you@${school.email_domains[0]}` : "School email (.edu)"}
+            value={email}
+            onChangeText={(text: string) => onChange("email", text)}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            onSubmitEditing={goNext}
+            error={errors.email}
+            autoFocus
+          />
+        );
+      case "birthday":
+        return Platform.OS === "web" ? (
+          // The native date pickers don't exist on web, so type the date.
+          <TextField
+            label="Date of birth"
+            icon="calendar-outline"
+            placeholder="YYYY-MM-DD"
+            value={birthday}
+            onChangeText={(text: string) => {
+              setBirthday(text.replace(/[^0-9-]/g, "").slice(0, 10));
+              clearError("birthday");
+            }}
+            keyboardType="numbers-and-punctuation"
+            returnKeyType="next"
+            onSubmitEditing={goNext}
+            error={errors.birthday}
+            hint="For example, 2005-09-14"
+            autoFocus
+          />
         ) : (
-        <>
-        <TouchableOpacity
-          style={styles.datePickerButton}
-          onPress={() => setPickerVisible(true)}
-          disabled={loading}
-          activeOpacity={0.9}
-          accessibilityRole="button"
-          accessibilityLabel="Pick your school"
-        >
-          <Text style={[styles.datePickerText, !school && styles.datePickerPlaceholderText]} numberOfLines={1}>
-            {school ? school.name : "Select Your School"}
-          </Text>
-          <MaterialIcons name="school" size={22} color={isDarkMode ? '#E0E0E0' : '#32745f'} />
-        </TouchableOpacity>
+          <View style={styles.fieldGroup}>
+            <Txt variant="small" style={{ fontFamily: fonts.semibold }}>
+              Date of birth
+            </Txt>
+            <Tap
+              onPress={openDatePicker}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel={birthday ? `Date of birth, ${new Date(birthday).toLocaleDateString()}` : "Select date of birth"}
+              style={[styles.dateField, errors.birthday ? styles.fieldError : null]}
+            >
+              <Ionicons name="calendar-outline" size={18} color={c.muted} />
+              <Txt variant="body" tone={birthday ? "ink" : "faint"} style={styles.flex}>
+                {birthday ? new Date(birthday).toLocaleDateString() : "Select date of birth"}
+              </Txt>
+              <Ionicons name="chevron-down" size={18} color={c.muted} />
+            </Tap>
+            {errors.birthday ? (
+              <Txt variant="caption" tone="accent">
+                {errors.birthday}
+              </Txt>
+            ) : null}
+          </View>
+        );
+      case "password":
+        return (
+          <View style={styles.fields}>
+            <View>
+              <TextField
+                ref={passwordInputRef}
+                label="Password"
+                icon="lock-closed-outline"
+                placeholder="At least 6 characters"
+                value={password}
+                onChangeText={(text: string) => onChange("password", text)}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                returnKeyType="next"
+                onSubmitEditing={() => confirmPasswordInputRef.current?.focus()}
+                blurOnSubmit={false}
+                error={errors.password}
+                inputStyle={styles.passwordInput}
+                autoFocus
+              />
+              {passwordToggle(showPassword, () => setShowPassword(!showPassword), "password")}
+            </View>
+            <View>
+              <TextField
+                ref={confirmPasswordInputRef}
+                label="Confirm password"
+                icon="lock-closed-outline"
+                placeholder="Type it again"
+                value={confirmPassword}
+                onChangeText={(text: string) => onChange("confirmPassword", text)}
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                returnKeyType="go"
+                onSubmitEditing={goNext}
+                error={errors.confirmPassword}
+                inputStyle={styles.passwordInput}
+              />
+              {passwordToggle(showConfirmPassword, () => setShowConfirmPassword(!showConfirmPassword), "confirm password")}
+            </View>
+            <View style={styles.policy}>
+              <Txt variant="caption" tone="muted">
+                By creating an account, you agree to how we handle your data:
+              </Txt>
+              <PrivacyPolicy isDarkMode={isDarkMode} />
+            </View>
+          </View>
+        );
+      case "verify":
+        return (
+          <TextField
+            accessibilityLabel="Verification code"
+            placeholder="000000"
+            value={code}
+            onChangeText={(text: string) => setCode(text.replace(/[^0-9]/g, ""))}
+            keyboardType="number-pad"
+            textContentType="oneTimeCode"
+            autoComplete="one-time-code"
+            maxLength={10}
+            editable={!loading}
+            autoFocus
+            inputStyle={[type.h1, styles.codeInput]}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
-        <TextInput
-          style={styles.input}
-          placeholder="Name"
-          value={username}
-          onChangeText={(text) => onChange("username", text)}
-          autoCapitalize="words"
-          placeholderTextColor="#888"
-          returnKeyType="done"
-          blurOnSubmit={true}
-        />
+  const copy = STEP_COPY[step];
+  const primaryTitle = step === "verify" ? "Verify" : step === "password" ? "Create account" : "Continue";
 
-        <TextInput
-          ref={emailInputRef}
-          style={styles.input}
-          placeholder={school?.email_domains?.length ? `you@${school.email_domains[0]}` : "School email (.edu)"}
-          value={email}
-          onChangeText={(text) => onChange("email", text)}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          placeholderTextColor="#888"
-          returnKeyType="done"
-          blurOnSubmit={true}
-        />
-
-        <TouchableOpacity
-          style={styles.datePickerButton}
-          onPress={openDatePicker}
-          disabled={loading}
-          activeOpacity={0.9}
-        >
-          <Text
-            style={[
-              styles.datePickerText,
-              !birthday && styles.datePickerPlaceholderText,
-            ]}
+  return (
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={c.bg} />
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
+        <View style={styles.topBar}>
+          <IconButton name="chevron-back" label="Back" onPress={goBack} size={26} />
+          <View
+            style={styles.progress}
+            accessible
+            accessibilityRole="progressbar"
+            accessibilityLabel={step === "verify" ? "Last step" : `Step ${stepIndex + 1} of ${FORM_STEPS.length}`}
           >
-            {birthday ? new Date(birthday).toLocaleDateString() : 'Select Date of Birth'}
-          </Text>
-          <MaterialIcons
-            name="calendar-today"
-            size={22}
-            color={isDarkMode ? '#E0E0E0' : '#32745f'}
-          />
-        </TouchableOpacity>
-
-        <View style={styles.passwordContainer}>
-          <TextInput
-            ref={passwordInputRef}
-            style={styles.passwordInput}
-            placeholder="Password"
-            value={password}
-            onChangeText={(text) => onChange("password", text)}
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            placeholderTextColor="#888"
-            returnKeyType="done"
-            blurOnSubmit={true}
-          />
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-            {showPassword ? (
-              <MaterialIcons name="visibility" size={20} color="#5c5c5c" />
-            ) : (
-              <MaterialIcons name="visibility-off" size={20} color="#5c5c5c" />
-            )}
-          </TouchableOpacity>
+            <ProgressBar value={(stepIndex + 1) / (FORM_STEPS.length + 1)} height={4} />
+          </View>
+          <View style={styles.topBarSpacer} />
         </View>
 
-        <View style={styles.passwordContainer}>
-          <TextInput
-            ref={confirmPasswordInputRef}
-            style={styles.passwordInput}
-            placeholder="Confirm Password"
-            value={confirmPassword}
-            onChangeText={(text) => onChange("confirmPassword", text)}
-            secureTextEntry={!showConfirmPassword}
-            autoCapitalize="none"
-            placeholderTextColor="#888"
-            returnKeyType="done"
-            blurOnSubmit={true}
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <FadeIn key={`${step}-heading`} style={styles.heading}>
+            <View style={styles.stepIcon}>
+              <Ionicons name={copy.icon} size={22} color={c.ink} />
+            </View>
+            <Txt variant="h1" accessibilityRole="header">
+              {copy.title}
+            </Txt>
+            <Txt variant="body" tone="muted">
+              {stepBody[step]}
+            </Txt>
+          </FadeIn>
+
+          <FadeIn key={`${step}-fields`} index={1}>
+            {renderStep()}
+          </FadeIn>
+        </ScrollView>
+
+        <View style={styles.footer}>
+          <Button
+            title={primaryTitle}
+            size="lg"
+            onPress={step === "verify" ? verifyCode : goNext}
+            loading={loading}
           />
-          <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
-            {showConfirmPassword ? (
-              <MaterialIcons name="visibility" size={20} color="#5c5c5c" />
-            ) : (
-              <MaterialIcons name="visibility-off" size={20} color="#5c5c5c" />
-            )}
-          </TouchableOpacity>
+          {step === "school" ? (
+            <Pressable
+              onPress={() => navigation.navigate("SignIn")}
+              accessibilityRole="button"
+              accessibilityLabel="Already have an account? Sign in"
+              hitSlop={8}
+              style={styles.switchLink}
+            >
+              <Txt variant="small" tone="muted" style={{ textAlign: "center" }}>
+                Already have an account?{" "}
+                <Txt variant="small" tone="accent" style={{ fontFamily: fonts.bold }}>
+                  Sign in
+                </Txt>
+              </Txt>
+            </Pressable>
+          ) : null}
+          {step === "verify" ? (
+            <View style={styles.verifyLinks}>
+              <Button title="Resend code" variant="ghost" size="sm" onPress={resendCode} disabled={loading} />
+              <Button
+                title="Use a different email"
+                variant="ghost"
+                size="sm"
+                onPress={() => setStep("email")}
+                disabled={loading}
+              />
+            </View>
+          ) : null}
         </View>
-
-        <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={loading}>
-          <Text style={styles.buttonText}>{loading ? "Signing Up..." : "Sign Up"}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.navigate("SignIn")}>
-          <Text style={styles.linkText}>Already have an account? Sign In</Text>
-        </TouchableOpacity>
-        </>
-        )}
-
-        <PrivacyPolicy isDarkMode={isDarkMode} style={styles.policySection} />
-      </ScrollView>
+      </KeyboardAvoidingView>
 
       <SchoolPicker
         visible={pickerVisible}
         schools={schools}
         isDarkMode={isDarkMode}
+        selectedId={school?.id ?? null}
         onClose={() => setPickerVisible(false)}
         onSelect={(selected: School) => {
           setPickerVisible(false);
           if (selected.status === "live") {
             setSchool(selected);
+            clearError("school");
           } else {
             // iOS drops alerts raised while a modal is still animating closed.
             setTimeout(() => offerWaitlist(selected), 450);
@@ -649,73 +773,116 @@ export default function SignUp() {
         }}
       />
 
-      <Modal
-        transparent
+      <Sheet
         visible={missingVisible}
-        animationType="fade"
-        onRequestClose={() => setMissingVisible(false)}
+        onClose={() => setMissingVisible(false)}
+        title="Bring MacroHall to your school"
+        body="Tell us where you go and we'll email you when it's live."
       >
-        <View style={styles.datePickerModal}>
-          <View style={styles.datePickerContainer}>
-            <Text style={styles.datePickerTitle}>Bring MacroHall to your school</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="School name"
-              value={missingSchoolName}
-              onChangeText={setMissingSchoolName}
-              placeholderTextColor="#888"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Your .edu email"
-              value={missingEmail}
-              onChangeText={setMissingEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              placeholderTextColor="#888"
-            />
-            <TouchableOpacity style={styles.button} onPress={submitMissingSchool}>
-              <Text style={styles.buttonText}>Join waitlist</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setMissingVisible(false)}>
-              <Text style={styles.linkText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+        <TextField
+          label="School name"
+          icon="school-outline"
+          placeholder="School name"
+          value={missingSchoolName}
+          onChangeText={setMissingSchoolName}
+        />
+        <TextField
+          label="School email"
+          icon="mail-outline"
+          placeholder="Your .edu email"
+          value={missingEmail}
+          onChangeText={setMissingEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <View style={styles.sheetActions}>
+          <Button title="Join waitlist" size="lg" onPress={submitMissingSchool} />
+          <Button title="Cancel" variant="ghost" onPress={() => setMissingVisible(false)} />
         </View>
-      </Modal>
+      </Sheet>
 
-      {Platform.OS === 'ios' && showDatePicker && (
-        <View style={styles.datePickerModal}>
-          <View style={styles.datePickerContainer}>
-            <Text style={styles.datePickerTitle}>Select Your Date of Birth</Text>
-            <View style={styles.datePickerWheelWrapper}>
-              <DateTimePicker
-                value={birthday ? new Date(birthday) : birthdayDate}
-                mode="date"
-                display="spinner"
-                themeVariant={isDarkMode ? 'dark' : 'light'}
-                textColor={isDarkMode ? '#FFFFFF' : '#000000'}
-                maximumDate={new Date()}
-                onChange={(_, selectedDate) => {
-                  if (selectedDate) {
-                    setBirthdayDate(selectedDate);
-                    setBirthday(selectedDate.toISOString().split('T')[0]);
-                  }
-                }}
-                style={styles.datePickerWheel}
-              />
-            </View>
-            {Platform.OS === 'ios' && (
-              <TouchableOpacity
-                style={styles.datePickerDoneButton}
-                onPress={() => setShowDatePicker(false)}
-              >
-                <Text style={styles.datePickerDoneText}>Done</Text>
-              </TouchableOpacity>
-            )}
+      {Platform.OS === 'ios' && (
+        <Sheet visible={showDatePicker} onClose={() => setShowDatePicker(false)} title="Your date of birth">
+          <View style={styles.datePickerWheelWrapper}>
+            <DateTimePicker
+              value={birthday ? new Date(birthday) : birthdayDate}
+              mode="date"
+              display="spinner"
+              themeVariant={isDark ? 'dark' : 'light'}
+              textColor={c.ink}
+              maximumDate={new Date()}
+              onChange={(_, selectedDate) => {
+                if (selectedDate) {
+                  setBirthdayFromDate(selectedDate);
+                }
+              }}
+              style={styles.datePickerWheel}
+            />
           </View>
-        </View>
+          <Button title="Done" size="lg" onPress={() => setShowDatePicker(false)} />
+        </Sheet>
       )}
-    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
+
+const makeStyles = (c: any, { space, radius }: any) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
+  flex: { flex: 1 },
+  topBar: { flexDirection: "row" as const, alignItems: "center" as const, paddingHorizontal: space.sm, paddingTop: space.xs, gap: space.sm },
+  progress: { flex: 1 },
+  topBarSpacer: { width: 44 },
+  scroll: { flexGrow: 1, paddingHorizontal: space.lg, paddingTop: space.xl, paddingBottom: space.xl, gap: space.xxl },
+  heading: { gap: space.md },
+  stepIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: c.surface,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    marginBottom: space.xs,
+  },
+  fields: { gap: space.lg },
+  fieldGroup: { gap: 6 },
+  schoolCard: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: space.md,
+    backgroundColor: c.surface,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    minHeight: 76,
+  },
+  schoolCardError: { borderWidth: 1.5, borderColor: c.accent },
+  schoolDisc: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: c.sunken,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  schoolDiscActive: { backgroundColor: c.accentSoft },
+  dateField: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: space.sm,
+    backgroundColor: c.sunken,
+    borderRadius: radius.md,
+    paddingHorizontal: space.lg,
+    minHeight: 52,
+  },
+  fieldError: { borderWidth: 1.5, borderColor: c.accent },
+  passwordInput: { paddingRight: 44 },
+  eye: { position: "absolute" as const, right: space.xs, top: 30 },
+  policy: { gap: space.sm, marginTop: space.sm },
+  codeInput: { textAlign: "center" as const, letterSpacing: 10, paddingVertical: space.sm },
+  footer: { paddingHorizontal: space.lg, paddingBottom: space.md, paddingTop: space.sm, gap: space.md },
+  switchLink: { alignSelf: "center" as const, paddingVertical: space.sm },
+  verifyLinks: { flexDirection: "row" as const, justifyContent: "center" as const, gap: space.sm },
+  sheetActions: { gap: space.sm, marginTop: space.xs },
+  datePickerWheelWrapper: { width: "100%" as const, alignItems: "center" as const, justifyContent: "center" as const },
+  datePickerWheel: { width: 320, alignSelf: "center" as const },
+});

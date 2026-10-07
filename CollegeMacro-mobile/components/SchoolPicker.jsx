@@ -1,12 +1,24 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { FlatList, Modal, StatusBar, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme, useStyles } from '../theme';
+import { Button, EmptyState, IconButton, Row, Tap, TextField, Txt } from './kit';
 
 // Full-screen searchable list of schools. Live schools are selectable;
 // coming-soon schools are shown so students can join the waitlist.
-export default function SchoolPicker({ visible, schools, onSelect, onClose, onRequestMissing, isDarkMode }) {
+// `selectedId` (optional) marks the school that's already chosen.
+// `isDarkMode` is still accepted for older callers; colors come from the theme.
+/**
+ * @param {{ visible: boolean, schools: any[], onSelect: (school: any) => void, onClose: () => void,
+ *   onRequestMissing: () => void, isDarkMode?: boolean, selectedId?: number | string | null }} props
+ */
+// eslint-disable-next-line no-unused-vars
+export default function SchoolPicker({ visible, schools, onSelect, onClose, onRequestMissing, isDarkMode, selectedId = null }) {
   const [query, setQuery] = useState('');
-  const styles = useMemo(() => makeStyles(isDarkMode), [isDarkMode]);
+  const { c, isDark, fonts } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -24,65 +36,127 @@ export default function SchoolPicker({ visible, schools, onSelect, onClose, onRe
     });
   }, [schools, query]);
 
+  const liveCount = (schools || []).filter((school) => school.status === 'live').length;
+
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
-            <MaterialIcons name="close" size={26} color={isDarkMode ? '#E0E0E0' : '#32745f'} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Pick your school</Text>
-          <View style={{ width: 26 }} />
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={c.bg} />
+        <View style={styles.topBar}>
+          <IconButton name="close" label="Close" onPress={onClose} tone="filled" />
         </View>
 
-        <TextInput
-          style={styles.search}
+        <View style={styles.heading}>
+          <Txt variant="h1" accessibilityRole="header">
+            Find your school
+          </Txt>
+          {liveCount ? (
+            <Txt variant="body" tone="muted">
+              MacroHall is live at {liveCount} {liveCount === 1 ? 'campus' : 'campuses'}, with more on the way.
+            </Txt>
+          ) : null}
+        </View>
+
+        <TextField
+          icon="search"
           placeholder="Search by name or email domain"
-          placeholderTextColor="#888"
           value={query}
           onChangeText={setQuery}
           autoCorrect={false}
           autoCapitalize="none"
           autoFocus
+          returnKeyType="search"
+          accessibilityLabel="Search schools"
+          style={styles.search}
         />
 
         <FlatList
           data={filtered}
           keyExtractor={(school) => String(school.id)}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
           renderItem={({ item: school }) => {
             const live = school.status === 'live';
+            const selected = selectedId != null && school.id === selectedId;
+            const place = [school.city, school.state].filter(Boolean).join(', ');
+            const domain = school.email_domains?.length ? `@${school.email_domains[0]}` : '';
+            const initial = (school.short_name || school.name || '?').trim().charAt(0).toUpperCase();
             return (
-              <TouchableOpacity
-                style={styles.row}
+              <Tap
                 onPress={() => {
                   setQuery('');
                   onSelect(school);
                 }}
+                scaleTo={0.985}
                 accessibilityRole="button"
+                accessibilityState={{ selected }}
                 accessibilityLabel={`${school.name}${live ? '' : ', coming soon'}`}
+                style={[styles.rowWrap, selected && styles.rowSelected]}
               >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.schoolName}>{school.name}</Text>
-                  <Text style={styles.schoolMeta}>
-                    {[school.city, school.state].filter(Boolean).join(', ')}
-                    {school.email_domains?.length ? `  ·  @${school.email_domains[0]}` : ''}
-                  </Text>
-                </View>
-                {live ? (
-                  <MaterialIcons name="chevron-right" size={22} color="#888" />
-                ) : (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>Coming soon</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+                <Row
+                  leading={
+                    <View style={[styles.initialDisc, live ? styles.initialDiscLive : null]}>
+                      <Txt variant="h2" color={live ? c.accent : c.muted}>
+                        {initial}
+                      </Txt>
+                    </View>
+                  }
+                  title={
+                    <Txt variant="bodyStrong" numberOfLines={2}>
+                      {school.name}
+                    </Txt>
+                  }
+                  subtitle={
+                    place || domain ? (
+                      <Txt variant="caption" tone="muted" numberOfLines={2}>
+                        {[place, domain].filter(Boolean).join('  ·  ')}
+                      </Txt>
+                    ) : null
+                  }
+                  trailing={
+                    <View style={styles.trailing}>
+                      {live ? (
+                        <View style={[styles.tag, styles.tagLive]}>
+                          <View style={styles.tagDot} />
+                          <Txt variant="caption" tone="accent" style={{ fontFamily: fonts.bold }}>
+                            Live
+                          </Txt>
+                        </View>
+                      ) : (
+                        <View style={[styles.tag, styles.tagSoon]}>
+                          <Txt variant="caption" tone="muted" style={{ fontFamily: fonts.bold }}>
+                            Coming soon
+                          </Txt>
+                        </View>
+                      )}
+                      {selected ? <Ionicons name="checkmark-circle" size={22} color={c.ink} /> : null}
+                    </View>
+                  }
+                />
+              </Tap>
             );
           }}
+          ListEmptyComponent={
+            <EmptyState
+              icon="school-outline"
+              title={query.trim() ? `No schools match "${query.trim()}"` : 'No schools yet'}
+              body="Tell us where you go and we'll email you when MacroHall launches there."
+              action="Request your school"
+              onAction={onRequestMissing}
+            />
+          }
           ListFooterComponent={
-            <TouchableOpacity style={styles.missing} onPress={onRequestMissing} accessibilityRole="button">
-              <Text style={styles.missingText}>Don't see your school? Ask us to add it</Text>
-            </TouchableOpacity>
+            filtered.length ? (
+              <Button
+                title="Don't see your school? Ask us to add it"
+                variant="ghost"
+                size="sm"
+                onPress={onRequestMissing}
+                style={styles.missing}
+              />
+            ) : null
           }
         />
       </View>
@@ -90,71 +164,28 @@ export default function SchoolPicker({ visible, schools, onSelect, onClose, onRe
   );
 }
 
-const makeStyles = (isDarkMode) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: isDarkMode ? '#121212' : '#fff',
-      paddingTop: 60,
-      paddingHorizontal: 20,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 16,
-    },
-    title: {
-      fontSize: 22,
-      fontWeight: '800',
-      color: '#32745f',
-    },
-    search: {
-      height: 50,
-      borderWidth: 1.5,
-      borderColor: isDarkMode ? '#333' : 'rgba(50, 116, 95, 0.2)',
-      borderRadius: 12,
-      paddingHorizontal: 15,
-      fontSize: 16,
-      marginBottom: 12,
-      backgroundColor: isDarkMode ? '#242424' : '#fff',
-      color: isDarkMode ? '#E0E0E0' : '#32745f',
-    },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 14,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: isDarkMode ? '#333' : '#ddd',
-    },
-    schoolName: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: isDarkMode ? '#E0E0E0' : '#222',
-    },
-    schoolMeta: {
-      fontSize: 13,
-      marginTop: 2,
-      color: isDarkMode ? '#999' : '#666',
-    },
-    badge: {
-      backgroundColor: isDarkMode ? '#333' : '#EEF4F1',
-      borderRadius: 10,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-    },
-    badgeText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: isDarkMode ? '#BBB' : '#32745f',
-    },
-    missing: {
-      paddingVertical: 24,
-      alignItems: 'center',
-    },
-    missingText: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: isDarkMode ? '#E0E0E0' : '#2E7D32',
-    },
-  });
+const makeStyles = (c, { space, radius }) => ({
+  container: { flex: 1, backgroundColor: c.bg, paddingHorizontal: space.lg },
+  topBar: { flexDirection: 'row', justifyContent: 'flex-end', marginRight: -space.xs },
+  heading: { gap: space.sm, marginTop: space.sm, marginBottom: space.xl },
+  search: { marginBottom: space.md },
+  list: { paddingTop: space.sm },
+  separator: { height: space.xs },
+  rowWrap: { borderRadius: radius.lg, paddingHorizontal: space.md },
+  rowSelected: { backgroundColor: c.surface },
+  initialDisc: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: c.sunken,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initialDiscLive: { backgroundColor: c.accentSoft },
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  tag: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.pill, paddingHorizontal: space.md, height: 26 },
+  tagLive: { backgroundColor: c.accentSoft },
+  tagSoon: { backgroundColor: c.sunken },
+  tagDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: c.accent },
+  missing: { alignSelf: 'center', marginTop: space.lg },
+});

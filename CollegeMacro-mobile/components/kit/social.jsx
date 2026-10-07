@@ -69,7 +69,7 @@ export function HeartButton({ active, onPress, size = 22, label = 'Favorite', to
       first.current = false;
       return;
     }
-    if (active) scale.value = withSequence(withTiming(1.25, { duration: 120, easing: Easing.out(Easing.quad) }), withTiming(1, { duration: 160 }));
+    if (active) scale.value = withSequence(withTiming(1.25, { duration: 120, easing: Easing.bezier(0.5, 1, 0.89, 1) }), withTiming(1, { duration: 160 }));
   }, [active, scale]);
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (

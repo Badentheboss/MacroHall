@@ -1,23 +1,24 @@
 import React, { useState, useRef } from "react";
 import {
   View,
-  Text,
   TextInput,
-  TouchableOpacity,
   Alert,
-  StyleSheet,
   Modal,
   StatusBar,
   Platform,
   KeyboardAvoidingView,
+  Pressable,
+  ScrollView,
 } from "react-native";
+import Animated, { Easing, ReduceMotion, SlideInDown } from "react-native-reanimated";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from "../types"; // Import types
 import { supabase } from "../utils/config";
-import { MaterialIcons } from "@expo/vector-icons";
-import { useTheme } from '../context/ThemeContext';
 import { ensureUserProfile } from "../utils/profile";
 import { normalizeEmail } from "../utils/schools";
+import { motion, useAppTheme, useStyles } from "../theme";
+import { Button, FadeIn, IconButton, TextField, Txt } from "../components/kit";
 
 type SignInScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -28,8 +29,68 @@ type Props = {
   navigation: SignInScreenNavigationProp;
 };
 
+// Bottom sheet on a dimmed backdrop: grabber, serif title, then content.
+function Sheet({
+  visible,
+  onClose,
+  title,
+  body,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  body?: string;
+  children: React.ReactNode;
+}) {
+  const { c, isDark, space, radius } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, justifyContent: "flex-end" }}>
+        <Pressable
+          style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: c.overlay }}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
+        <Animated.View
+          entering={SlideInDown.duration(motion.base).easing(Easing.bezier(0.33, 1, 0.68, 1)).reduceMotion(ReduceMotion.System)}
+          accessibilityViewIsModal
+          style={{
+            backgroundColor: isDark ? c.surface : c.bg,
+            borderTopLeftRadius: radius.xl,
+            borderTopRightRadius: radius.xl,
+            paddingHorizontal: space.xl,
+            paddingTop: space.md,
+            paddingBottom: insets.bottom + space.xl,
+            gap: space.lg,
+            width: "100%",
+            maxWidth: 560,
+            alignSelf: "center",
+          }}
+        >
+          <View style={{ alignSelf: "center", width: 40, height: 5, borderRadius: radius.pill, backgroundColor: c.hairline }} />
+          <View style={{ gap: space.sm, marginTop: space.sm }}>
+            <Txt variant="h1" accessibilityRole="header">
+              {title}
+            </Txt>
+            {body ? (
+              <Txt variant="body" tone="muted">
+                {body}
+              </Txt>
+            ) : null}
+          </View>
+          {children}
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 export default function SignIn({ navigation }: Props) {
-  const { isDarkMode } = useTheme();
+  const { c, isDark, type, fonts } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -93,6 +154,11 @@ export default function SignIn({ navigation }: Props) {
     await enterApp();
   };
 
+  const handleResendCode = async () => {
+    const { error } = await supabase.auth.resend({ type: "signup", email: normalizeEmail(email) });
+    Alert.alert(error ? "Couldn't resend" : "Code sent", error ? error.message : `Check ${normalizeEmail(email)}.`);
+  };
+
   const handlePasswordReset = async () => {
     if (!resetEmail.trim()) {
       Alert.alert("Missing Email", "Please enter your email.");
@@ -116,282 +182,177 @@ export default function SignIn({ navigation }: Props) {
     handleSignIn(); // Your existing sign in function
   };
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: isDarkMode ? '#121212' : '#fff',
-      paddingTop: '15%',
-      paddingHorizontal: 20,
-    },
-    headerContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 30,
-      position: 'relative',
-    },
-    backButton: {
-      position: 'absolute',
-      left: 0,
-      zIndex: 1,
-      padding: 5,
-    },
-    title: {
-      fontSize: 28,
-      fontWeight: "800",
-      color: "#32745f",
-      flex: 1,
-      textAlign: 'center',
-    },
-    input: {
-      height: 55,
-      width: "100%",
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.2)",
-      borderWidth: 1.5,
-      borderRadius: 12,
-      paddingHorizontal: 15,
-      marginBottom: 20,
-      fontSize: 16,
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-    },
-    passwordContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.2)",
-      borderWidth: 1.5,
-      borderRadius: 12,
-      width: "100%",
-      paddingHorizontal: 15,
-      marginBottom: 20,
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-    },
-    passwordInput: {
-      flex: 1,
-      fontSize: 16,
-      height: 55,
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-    },
-    button: {
-      backgroundColor: "#32745f",
-      paddingVertical: 16,
-      width: "100%",
-      borderRadius: 12,
-      alignItems: "center",
-      marginBottom: 15,
-      shadowColor: isDarkMode ? '#000' : "#32745f",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.1,
-      shadowRadius: 12,
-      elevation: 5,
-    },
-    buttonText: {
-      color: "#fff",
-      fontSize: 18,
-      fontWeight: "700",
-      letterSpacing: 0.5,
-    },
-    linkText: {
-      marginTop: 15,
-      color: isDarkMode ? '#E0E0E0' : "#2E7D32",
-      fontSize: 16,
-      textAlign: "center",
-      fontWeight: "600",
-    },
-    modalContainer: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
-    },
-    modalContent: {
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-      padding: 25,
-      borderRadius: 20,
-      width: "90%",
-      alignItems: "center",
-    },
-    modalTitle: {
-      fontSize: 24,
-      fontWeight: "700",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      marginBottom: 20,
-    },
-    modalText: {
-      fontSize: 15,
-      color: isDarkMode ? '#D3D3D3' : "#555",
-      textAlign: "center",
-      marginBottom: 16,
-    },
-    cancelButton: {
-      backgroundColor: 'transparent',
-      paddingVertical: 16,
-      width: "100%",
-      borderRadius: 12,
-      alignItems: "center",
-      marginBottom: 15,
-      borderWidth: 1.5,
-      borderColor: isDarkMode ? '#E0E0E0' : "#32745f",
-    },
-    cancelButtonText: {
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      fontSize: 18,
-      fontWeight: "700",
-      letterSpacing: 0.5,
-    },
-  });
+  const openReset = () => {
+    setResetEmail((current) => current || email.trim());
+    setResetModalVisible(true);
+  };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
-    >
-      <StatusBar
-        barStyle={isDarkMode ? "light-content" : "dark-content"}
-        backgroundColor={isDarkMode ? "#121212" : "#fff"}
-      />
-      
-      <View style={styles.headerContainer}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <MaterialIcons 
-            name="arrow-back" 
-            size={28} 
-            color={isDarkMode ? '#E0E0E0' : '#32745f'} 
-          />
-        </TouchableOpacity>
-        <Text style={styles.title}>Sign In</Text>
-      </View>
-
-      <TextInput
-        style={styles.input}
-        placeholder="School email (.edu)"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        placeholderTextColor="#888"
-        returnKeyType="next"
-        onSubmitEditing={() => passwordInputRef.current?.focus()}
-        blurOnSubmit={false}
-        editable={!loading}
-      />
-
-      <View style={styles.passwordContainer}>
-        <TextInput
-          ref={passwordInputRef}
-          style={styles.passwordInput}
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry={!showPassword}
-          autoCapitalize="none"
-          placeholderTextColor="#888"
-          returnKeyType="go"
-          onSubmitEditing={handleSubmit}
-          editable={!loading}
-        />
-        <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-          {showPassword ? (
-            <MaterialIcons name="visibility" size={20} color="#5c5c5c" />
-          ) : (
-            <MaterialIcons name="visibility-off" size={20} color="#5c5c5c" />
-          )}
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleSignIn}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? "Signing In..." : "Sign In"}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={() => navigation.navigate("SignUp")} disabled={loading}>
-        <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={() => setResetModalVisible(true)} disabled={loading}>
-        <Text style={styles.linkText}>Forgot your password? Reset it</Text>
-      </TouchableOpacity>
-
-      {/* Email verification for accounts that never entered their sign-up code */}
-      <Modal
-        transparent={true}
-        visible={verifyVisible}
-        onRequestClose={() => setVerifyVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Verify your email</Text>
-            <Text style={styles.modalText}>
-              We sent a new code to {normalizeEmail(email)}.
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Code"
-              value={code}
-              onChangeText={(text) => setCode(text.replace(/[^0-9]/g, ""))}
-              keyboardType="number-pad"
-              textContentType="oneTimeCode"
-              maxLength={10}
-              placeholderTextColor="#888"
-              editable={!loading}
-            />
-            <TouchableOpacity style={styles.button} onPress={handleVerify} disabled={loading}>
-              <Text style={styles.buttonText}>{loading ? "Verifying..." : "Verify"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={() => setVerifyVisible(false)}
-              disabled={loading}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={c.bg} />
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
+        <View style={styles.topBar}>
+          <IconButton name="chevron-back" label="Back" onPress={() => navigation.goBack()} size={26} />
         </View>
-      </Modal>
 
-      {/* Reset Password Modal */}
-      <Modal
-        transparent={true}
-        visible={resetModalVisible}
-        onRequestClose={() => setResetModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reset Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email"
-              value={resetEmail}
-              onChangeText={setResetEmail}
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <FadeIn style={styles.heading}>
+            <Txt variant="h1" accessibilityRole="header">
+              Welcome back
+            </Txt>
+            <Txt variant="body" tone="muted">
+              Sign in with your school email to pick up where you left off.
+            </Txt>
+          </FadeIn>
+
+          <FadeIn index={1} style={styles.fields}>
+            <TextField
+              label="School email"
+              icon="mail-outline"
+              placeholder="you@school.edu"
+              value={email}
+              onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
-              placeholderTextColor="#888"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="username"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordInputRef.current?.focus()}
+              blurOnSubmit={false}
               editable={!loading}
             />
-            <TouchableOpacity
-              style={styles.button}
-              onPress={handlePasswordReset}
+
+            <View>
+              <TextField
+                ref={passwordInputRef}
+                label="Password"
+                icon="lock-closed-outline"
+                placeholder="Your password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="current-password"
+                textContentType="password"
+                returnKeyType="go"
+                onSubmitEditing={handleSubmit}
+                editable={!loading}
+                inputStyle={styles.passwordInput}
+              />
+              <View style={styles.eye}>
+                <IconButton
+                  name={showPassword ? "eye-off-outline" : "eye-outline"}
+                  label={showPassword ? "Hide password" : "Show password"}
+                  onPress={() => setShowPassword(!showPassword)}
+                  size={20}
+                  color={c.muted}
+                />
+              </View>
+            </View>
+
+            <Button
+              title="Forgot password?"
+              variant="ghost"
+              size="sm"
+              onPress={openReset}
               disabled={loading}
-            >
-              <Text style={styles.buttonText}>Send Reset Link</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={() => setResetModalVisible(false)}
-              disabled={loading}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+              style={styles.forgot}
+            />
+          </FadeIn>
+        </ScrollView>
+
+        <FadeIn index={2} style={styles.footer}>
+          <Button title="Sign in" size="lg" onPress={handleSignIn} loading={loading} />
+          <Pressable
+            onPress={() => navigation.navigate("SignUp")}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="New here? Create an account"
+            hitSlop={8}
+            style={styles.switchLink}
+          >
+            <Txt variant="small" tone="muted" style={{ textAlign: "center" }}>
+              New here?{" "}
+              <Txt variant="small" tone="accent" style={{ fontFamily: fonts.bold }}>
+                Create an account
+              </Txt>
+            </Txt>
+          </Pressable>
+        </FadeIn>
+      </KeyboardAvoidingView>
+
+      {/* Email verification for accounts that never entered their sign-up code */}
+      <Sheet
+        visible={verifyVisible}
+        onClose={() => setVerifyVisible(false)}
+        title="Verify your email"
+        body={`We sent a new code to ${normalizeEmail(email)}.`}
+      >
+        <TextField
+          accessibilityLabel="Verification code"
+          placeholder="000000"
+          value={code}
+          onChangeText={(text: string) => setCode(text.replace(/[^0-9]/g, ""))}
+          keyboardType="number-pad"
+          textContentType="oneTimeCode"
+          autoComplete="one-time-code"
+          maxLength={10}
+          editable={!loading}
+          autoFocus
+          inputStyle={[type.h1, styles.codeInput]}
+        />
+        <View style={styles.sheetActions}>
+          <Button title="Verify" size="lg" onPress={handleVerify} loading={loading} />
+          <Button title="Resend code" variant="ghost" onPress={handleResendCode} disabled={loading} />
+          <Button title="Cancel" variant="ghost" size="sm" onPress={() => setVerifyVisible(false)} disabled={loading} />
         </View>
-      </Modal>
-    </KeyboardAvoidingView>
+      </Sheet>
+
+      {/* Reset Password Modal */}
+      <Sheet
+        visible={resetModalVisible}
+        onClose={() => setResetModalVisible(false)}
+        title="Reset your password"
+        body="We'll email you a link to choose a new one."
+      >
+        <TextField
+          label="School email"
+          icon="mail-outline"
+          placeholder="you@school.edu"
+          value={resetEmail}
+          onChangeText={setResetEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!loading}
+        />
+        <View style={styles.sheetActions}>
+          <Button title="Send reset link" size="lg" onPress={handlePasswordReset} disabled={loading} />
+          <Button title="Cancel" variant="ghost" onPress={() => setResetModalVisible(false)} disabled={loading} />
+        </View>
+      </Sheet>
+    </SafeAreaView>
   );
 }
+
+const makeStyles = (c: any, { space }: any) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
+  flex: { flex: 1 },
+  topBar: { paddingHorizontal: space.sm, paddingTop: space.xs },
+  scroll: { flexGrow: 1, paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.xl, gap: space.xxl },
+  heading: { gap: space.sm },
+  fields: { gap: space.lg },
+  passwordInput: { paddingRight: 44 },
+  eye: { position: "absolute" as const, right: space.xs, bottom: 4 },
+  forgot: { alignSelf: "flex-end" as const, marginTop: -space.sm, marginRight: -space.md },
+  footer: { paddingHorizontal: space.lg, paddingBottom: space.md, paddingTop: space.sm, gap: space.lg },
+  switchLink: { alignSelf: "center" as const, paddingVertical: space.sm },
+  codeInput: { textAlign: "center" as const, letterSpacing: 10, paddingVertical: space.sm },
+  sheetActions: { gap: space.sm, marginTop: space.xs },
+});

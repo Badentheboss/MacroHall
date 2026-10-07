@@ -43,7 +43,7 @@ function TypingDot({ delay }) {
     opacity.value = withDelay(
       delay,
       withRepeat(
-        withSequence(withTiming(1, { duration: 360, easing: Easing.out(Easing.quad) }), withTiming(0.3, { duration: 360, easing: Easing.in(Easing.quad) })),
+        withSequence(withTiming(1, { duration: 360, easing: Easing.bezier(0.5, 1, 0.89, 1) }), withTiming(0.3, { duration: 360, easing: Easing.bezier(0.11, 0, 0.5, 0) })),
         -1
       )
     );

@@ -1,263 +1,185 @@
 import React from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, StatusBar } from "react-native";
+import { ScrollView, StatusBar, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useTheme } from '../context/ThemeContext';
-import { DEMO_MODE } from '../utils/config';
+import { Ionicons } from "@expo/vector-icons";
+import { useAppTheme, useStyles } from "../theme";
+import { Avatar, Button, FadeIn, LiveDot, MacroRing, ProgressBar, Txt } from "../components/kit";
+import { DEMO_MODE } from "../utils/config";
 
+// Friends in the hero collage. Emoji are their avatars (content, not icons).
+const FRIENDS = [
+  { emoji: "🧑🏽", color: "#E0452B" },
+  { emoji: "👩🏻", color: "#D99528" },
+  { emoji: "🧑🏾", color: "#5468C9" },
+  { emoji: "👱🏼‍♀️", color: "#C92F72" },
+];
+
+// Hinge-style welcome: a small collage of what the app does, a serif
+// headline, and the ways in.
 export default function Home({ navigation }) {
-  const { isDarkMode } = useTheme();
+  const { c, isDark, fonts } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  // Short phones (SE-sized) get a tighter collage so every button stays above the fold.
+  const compact = useWindowDimensions().height < 760;
 
-  // Dynamic styles based on theme
-  const currentStyles = isDarkMode ? darkStyles : lightStyles;
+  const exploreDemo = () => navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+  const createAccount = () => navigation.navigate("SignUp");
+  const signIn = () => navigation.navigate("SignIn");
 
   return (
-    <SafeAreaView style={currentStyles.container}>
-      {/* StatusBar styling */}
-      <StatusBar
-        barStyle={isDarkMode ? "light-content" : "dark-content"}
-        backgroundColor={isDarkMode ? "#121212" : "#E6EBDE"}
-      />
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={c.bg} />
+      <ScrollView contentContainerStyle={styles.scroll} bounces={false} showsVerticalScrollIndicator={false}>
+        <FadeIn style={styles.header}>
+          <Txt variant="h2" accessibilityRole="header">
+            MacroHall
+          </Txt>
+        </FadeIn>
 
-      {/* Header Section */}
-      <View style={currentStyles.headerContainer}>
-        <Image
-          source={require("../assets/images/nutriNavlogo.png")}
-          style={currentStyles.headerLogo}
-        />
-      </View>
+        {/* Hero collage, composed from kit pieces instead of images. */}
+        <View style={[styles.collage, compact && styles.collageCompact]} accessible={false} importantForAccessibility="no-hide-descendants">
+          <View style={[styles.stage, compact && styles.stageCompact]}>
+            <FadeIn index={1} style={[styles.ringCardSlot, compact && styles.ringCardSlotCompact]}>
+              <View style={[styles.card, styles.ringCard]}>
+                <MacroRing progress={0.62} size={84} stroke={8} color={c.accent}>
+                  <Ionicons name="restaurant-outline" size={22} color={c.ink} />
+                </MacroRing>
+                <View style={styles.ringText}>
+                  <Txt variant="overline" tone="muted">
+                    Today
+                  </Txt>
+                  <Txt variant="number">1,700</Txt>
+                  <Txt variant="caption" tone="muted">
+                    cal left
+                  </Txt>
+                </View>
+                {compact ? null : (
+                  <View style={styles.macroBars}>
+                    <ProgressBar value={0.7} color={c.protein} height={4} />
+                    <ProgressBar value={0.45} color={c.carbs} height={4} />
+                    <ProgressBar value={0.3} color={c.fat} height={4} />
+                  </View>
+                )}
+              </View>
+            </FadeIn>
 
-      {/* Main Content */}
-      <View style={currentStyles.content}>
-        {/* Header Section */}
-        <View style={currentStyles.header}>
-          <Text style={currentStyles.title}>
-            Eat Smart, Track Anywhere:{" "}
-            <Text style={currentStyles.highlight}>Your Campus Food Diary</Text>
-          </Text>
-          <Text style={[currentStyles.description, currentStyles.boldText]}>
-            Record your meals at your campus dining halls, track your macros, and see where your friends are eating—all in one place.
-          </Text>
+            <FadeIn index={2} style={styles.friendsCardSlot}>
+              <View style={[styles.card, styles.friendsCard]}>
+                <View style={styles.avatarStack}>
+                  {FRIENDS.map((friend, i) => (
+                    <View key={friend.emoji} style={[styles.avatarSlot, i > 0 && styles.avatarOverlap, { zIndex: FRIENDS.length - i }]}>
+                      <View style={styles.avatarBackdrop}>
+                        <Avatar emoji={friend.emoji} color={friend.color} size={40} live />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.liveLine}>
+                  <LiveDot size={7} />
+                  <Txt variant="caption" numberOfLines={1}>
+                    Maya is at South Quad
+                  </Txt>
+                </View>
+              </View>
+            </FadeIn>
+
+            <FadeIn index={3} style={styles.heartChipSlot}>
+              <View style={styles.heartChip}>
+                <View style={styles.heartDisc}>
+                  <Ionicons name="heart" size={16} color={c.accent} />
+                </View>
+                <View>
+                  <Txt variant="small" style={{ fontFamily: fonts.bold }}>
+                    Teriyaki Salmon
+                  </Txt>
+                  <Txt variant="caption" tone="muted">
+                    38g protein
+                  </Txt>
+                </View>
+              </View>
+            </FadeIn>
+          </View>
         </View>
 
-        {/* Call to Action Section */}
-        <View style={currentStyles.callToAction}>
-          <Text style={[currentStyles.callToActionText, currentStyles.boldText]}>
-            NutriNav's new mobile app is your ultimate dining companion—simplifying meal tracking and enhancing your dining experience!
-          </Text>
-        </View>
+        <FadeIn index={4} style={styles.copy}>
+          <Txt variant="display" accessibilityRole="header">
+            Eat well at the{"\n"}
+            <Txt variant="display" tone="accent" style={{ fontFamily: fonts.serifItalic }}>
+              dining hall.
+            </Txt>
+          </Txt>
+          <Txt variant="body" tone="muted">
+            Track your macros, find the best plate at every hall, and see where your friends are eating.
+          </Txt>
+        </FadeIn>
 
-        {/* Buttons Section */}
-        {DEMO_MODE && (
-          <TouchableOpacity
-            style={[currentStyles.button, currentStyles.primaryButton, { marginBottom: 12, alignItems: "center" }]}
-            onPress={() => navigation.reset({ index: 0, routes: [{ name: "Main" }] })}
-            accessibilityRole="button"
-          >
-            <Text style={currentStyles.buttonText}>Explore the demo</Text>
-          </TouchableOpacity>
-        )}
-        <View style={currentStyles.buttonContainer}>
-          <TouchableOpacity
-            style={[currentStyles.button, currentStyles.primaryButton]}
-            onPress={() => navigation.navigate("SignIn")}
-          >
-            <Text style={currentStyles.buttonText}>Sign In</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[currentStyles.button, currentStyles.secondaryButton]}
-            onPress={() => navigation.navigate("SignUp")}
-          >
-            <Text style={currentStyles.secondaryButtonText}>Start Today</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Phone Graphic Section */}
-        <View style={currentStyles.phoneGraphicContainer}>
-          <Image
-            source={require("../assets/images/nutrinavphonegraphic-removebg-preview.jpg")}
-            style={currentStyles.phoneGraphic}
-          />
-        </View>
-      </View>
+        <FadeIn index={5} style={styles.actions}>
+          {DEMO_MODE ? (
+            <>
+              <Button title="Explore the demo" size="lg" onPress={exploreDemo} />
+              <Button title="Create account" variant="secondary" size="lg" onPress={createAccount} />
+              <Button title="I already have an account" variant="ghost" onPress={signIn} />
+            </>
+          ) : (
+            <>
+              <Button title="Create account" size="lg" onPress={createAccount} />
+              <Button title="I already have an account" variant="secondary" size="lg" onPress={signIn} />
+            </>
+          )}
+        </FadeIn>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-const baseStyles = {
-  container: {
-    flex: 1,
-  },
-  headerContainer: {
+const makeStyles = (c, { space, radius }) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
+  scroll: { flexGrow: 1, paddingHorizontal: space.lg, paddingBottom: space.lg },
+  header: { alignItems: "center", paddingTop: space.md, paddingBottom: space.sm },
+  collage: { flexGrow: 1, justifyContent: "center", marginVertical: space.lg },
+  collageCompact: { marginVertical: space.sm },
+  stageCompact: { height: 236 },
+  ringCardSlotCompact: { top: 60 },
+  stage: { height: 296, width: "100%", maxWidth: 400, alignSelf: "center" },
+  card: { backgroundColor: c.surface, borderRadius: radius.lg, padding: space.lg },
+  ringCardSlot: { position: "absolute", left: 0, top: 64, width: 236 },
+  ringCard: {
+    width: 236,
+    flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    paddingVertical: 20,
+    gap: space.lg,
+    transform: [{ rotate: "-5deg" }],
   },
-  headerLogo: {
-    width: 300,
-    height: 70,
-    resizeMode: "contain",
+  ringText: { gap: 2 },
+  macroBars: { width: "100%", gap: space.xs },
+  friendsCardSlot: { position: "absolute", right: 0, top: 0, width: 196 },
+  friendsCard: { alignSelf: "flex-end", gap: space.md, transform: [{ rotate: "4deg" }] },
+  avatarStack: { flexDirection: "row" },
+  avatarSlot: { borderRadius: radius.pill },
+  avatarOverlap: { marginLeft: -space.md },
+  avatarBackdrop: { backgroundColor: c.surface, borderRadius: radius.pill },
+  liveLine: { flexDirection: "row", alignItems: "center", gap: 6 },
+  heartChipSlot: { position: "absolute", right: space.sm, bottom: 0 },
+  heartChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    backgroundColor: c.surface,
+    borderRadius: radius.pill,
+    paddingVertical: space.sm,
+    paddingLeft: space.sm,
+    paddingRight: space.xl,
+    transform: [{ rotate: "-3deg" }],
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
+  heartDisc: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: c.accentSoft,
+    alignItems: "center",
     justifyContent: "center",
   },
-  header: {
-    marginBottom: 20,
-    marginTop: 10,
-  },
-  title: {
-    fontSize: 27.6,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 25,
-  },
-  highlight: {
-    fontWeight: "bold",
-  },
-  description: {
-    fontSize: 16,
-    marginTop: 10,
-    textAlign: "center",
-    fontWeight: "500",
-  },
-  callToAction: {
-    marginVertical: 10,
-    paddingHorizontal: 10,
-  },
-  callToActionText: {
-    fontSize: 16,
-    textAlign: "center",
-    fontWeight: "500",
-  },
-  boldText: {
-    fontWeight: "bold",
-  },
-  buttonContainer: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    marginTop: 30,
-    marginBottom: 0,
-  },
-  button: {
-    paddingVertical: 15,
-    paddingHorizontal: 25,
-    borderRadius: 15,
-  },
-  primaryButton: {
-    borderWidth: 1,
-  },
-  secondaryButton: {
-    borderWidth: 1,
-  },
-  buttonText: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  secondaryButtonText: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  phoneGraphicContainer: {
-    alignItems: "center",
-    marginTop: -20,
-  },
-  phoneGraphic: {
-    width: 500,
-    height: 300,
-    resizeMode: "contain",
-  },
-};
-
-// Light Theme Styles
-const lightStyles = StyleSheet.create({
-  ...baseStyles,
-  container: {
-    ...baseStyles.container,
-    backgroundColor: "#FFFFFF",
-  },
-  headerContainer: {
-    ...baseStyles.headerContainer,
-    backgroundColor: "#FFFFFF",
-  },
-  title: {
-    ...baseStyles.title,
-    color: "#32745f",
-  },
-  highlight: {
-    ...baseStyles.highlight,
-    color: "#2E7D32",
-  },
-  description: {
-    ...baseStyles.description,
-    color: "#6E6E6E",
-  },
-  callToActionText: {
-    ...baseStyles.callToActionText,
-    color: "#6E6E6E",
-  },
-  primaryButton: {
-    ...baseStyles.primaryButton,
-    backgroundColor: "#32745f",
-    borderColor: "#32745f",
-  },
-  buttonText: {
-    ...baseStyles.buttonText,
-    color: "#FFFF",
-  },
-  secondaryButton: {
-    ...baseStyles.secondaryButton,
-    backgroundColor: "#2E7D32",
-    borderColor: "#2E7D32",
-  },
-  secondaryButtonText: {
-    ...baseStyles.secondaryButtonText,
-    color: "#FFFF",
-  },
-});
-
-// Dark Theme Styles
-const darkStyles = StyleSheet.create({
-  ...baseStyles,
-  container: {
-    ...baseStyles.container,
-    backgroundColor: "#121212",
-  },
-  headerContainer: {
-    ...baseStyles.headerContainer,
-    backgroundColor: "#121212",
-  },
-  title: {
-    ...baseStyles.title,
-    color: "#32745f",
-  },
-  highlight: {
-    ...baseStyles.highlight,
-    color: "#2E7D32",
-  },
-  description: {
-    ...baseStyles.description,
-    color: "#D3D3D3",
-  },
-  callToActionText: {
-    ...baseStyles.callToActionText,
-    color: "#D3D3D3",
-  },
-  primaryButton: {
-    ...baseStyles.primaryButton,
-    backgroundColor: "#32745f",
-    borderColor: "#32745f",
-  },
-  buttonText: {
-    ...baseStyles.buttonText,
-    color: "#FFFFFF",
-  },
-  secondaryButton: {
-    ...baseStyles.secondaryButton,
-    backgroundColor: "#2E7D32",
-    borderColor: "#2E7D32",
-  },
-  secondaryButtonText: {
-    ...baseStyles.secondaryButtonText,
-    color: "#FFFFFF",
-  },
+  copy: { gap: space.md, marginBottom: space.xl },
+  actions: { gap: space.md },
 });
