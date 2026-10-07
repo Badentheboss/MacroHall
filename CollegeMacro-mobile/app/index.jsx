@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity, StatusBar } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from '../context/ThemeContext';
+import { DEMO_MODE } from '../utils/config';
 
 export default function Home({ navigation }) {
   const { isDarkMode } = useTheme();
@@ -46,6 +47,15 @@ export default function Home({ navigation }) {
         </View>
 
         {/* Buttons Section */}
+        {DEMO_MODE && (
+          <TouchableOpacity
+            style={[currentStyles.button, currentStyles.primaryButton, { marginBottom: 12, alignItems: "center" }]}
+            onPress={() => navigation.reset({ index: 0, routes: [{ name: "Main" }] })}
+            accessibilityRole="button"
+          >
+            <Text style={currentStyles.buttonText}>Explore the demo</Text>
+          </TouchableOpacity>
+        )}
         <View style={currentStyles.buttonContainer}>
           <TouchableOpacity
             style={[currentStyles.button, currentStyles.primaryButton]}

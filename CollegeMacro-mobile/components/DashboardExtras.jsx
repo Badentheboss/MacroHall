@@ -12,6 +12,23 @@ function prettyMeals(meals) {
   return (meals || []).map((m) => m.replace(/^\w/, (c) => c.toUpperCase())).join(', ');
 }
 
+// One row per dish with every hall serving it, since popular dishes are often
+// on several halls' menus the same day.
+function groupByDish(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const group = groups.get(row.dish_name) || { ...row, halls: [], meals: [] };
+    group.halls.push(row.hall_name);
+    group.meals = [...new Set([...group.meals, ...(row.meals || [])])];
+    groups.set(row.dish_name, group);
+  }
+  return [...groups.values()];
+}
+
+function hallList(halls) {
+  return halls.length <= 2 ? halls.join(' & ') : `${halls.slice(0, 2).join(', ')} +${halls.length - 2} more`;
+}
+
 // Dashboard cards: hearted dishes on today's/tomorrow's menus, the "hit my
 // macros" plate builder, and how busy the gym is (live counters where the rec
 // center publishes them, plus MacroHall check-ins and friends).
@@ -41,8 +58,9 @@ export default function DashboardExtras({ isDarkMode, remaining }) {
   );
 
   const today = favorites.length > 0 ? favorites[0].day : null;
-  const todays = favorites.filter((f) => f.day === today);
-  const later = favorites.filter((f) => f.day !== today);
+  const todays = groupByDish(favorites.filter((f) => f.day === today));
+  const servedToday = new Set(todays.map((f) => f.dish_name));
+  const later = groupByDish(favorites.filter((f) => f.day !== today && !servedToday.has(f.dish_name)));
   const liveFacilities = live?.facilities || [];
 
   return (
@@ -56,22 +74,22 @@ export default function DashboardExtras({ isDarkMode, remaining }) {
         ) : (
           <>
             {todays.map((f) => (
-              <TouchableOpacity key={`t-${f.hall_id}-${f.dish_name}`} style={styles.favoriteRow} onPress={() => navigation.navigate('AddFood')}>
+              <TouchableOpacity key={`t-${f.dish_name}`} style={styles.favoriteRow} onPress={() => navigation.navigate('AddFood')}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.favoriteName}>{f.dish_name}</Text>
                   <Text style={styles.muted}>
-                    Today · {f.hall_name} · {prettyMeals(f.meals)}
+                    Today · {hallList(f.halls)} · {prettyMeals(f.meals)}
                   </Text>
                 </View>
                 {f.protein != null && <Text style={styles.favoriteMacro}>{Math.round(f.protein)}g P</Text>}
               </TouchableOpacity>
             ))}
             {later.map((f) => (
-              <View key={`l-${f.hall_id}-${f.dish_name}`} style={styles.favoriteRow}>
+              <View key={`l-${f.dish_name}`} style={styles.favoriteRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.favoriteName}>{f.dish_name}</Text>
                   <Text style={styles.muted}>
-                    Tomorrow · {f.hall_name} · {prettyMeals(f.meals)}
+                    Tomorrow · {hallList(f.halls)} · {prettyMeals(f.meals)}
                   </Text>
                 </View>
               </View>

@@ -258,3 +258,22 @@ test('POST /ingest is closed without the operator secret', async () => {
   const response = await request(createApp({ getSupabase: () => fakeSupabase() }), { path: '/ingest?school=umich', token: 'anything' });
   assert.equal(response.status, 403);
 });
+
+test('CORS answers preflights only for the local web preview', async () => {
+  const server = http.createServer(createApp({ getSupabase: () => fakeSupabase() }));
+  await new Promise((resolve) => server.listen(0, resolve));
+  const url = `http://127.0.0.1:${server.address().port}/chat`;
+  const preflight = (origin) =>
+    fetch(url, { method: 'OPTIONS', headers: { Origin: origin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization,content-type' } });
+  try {
+    const allowed = await preflight('http://localhost:8081');
+    assert.equal(allowed.status, 204);
+    assert.equal(allowed.headers.get('access-control-allow-origin'), 'http://localhost:8081');
+    assert.match(allowed.headers.get('access-control-allow-headers'), /Authorization/);
+
+    const other = await preflight('https://evil.example');
+    assert.equal(other.headers.get('access-control-allow-origin'), null);
+  } finally {
+    server.close();
+  }
+});

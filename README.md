@@ -30,6 +30,18 @@ Highlights:
 - `.github/workflows/` — scheduled menu ingestion and daily log reset
 - `docs/EXPANSION_PLAN.md` — which schools to add next, how to handle unparsable menus, launch checklist
 
+## Run it on localhost
+
+From the repo root on your computer (Node 20+):
+
+```bash
+npm run demo   # the app on sample data at http://localhost:8081, no keys needed
+npm run setup  # one-time: connect your Supabase project and fill in both .env files
+npm run dev    # the real app at http://localhost:8081, plus the backend on :3001
+```
+
+The first run installs the app's dependencies. The demo signs you in as a Michigan student with friends, menus, gym counts, a food log and a profile calendar, all made up and kept in memory (a page reload resets it). `npm run dev` falls back to the demo until `CollegeMacro-mobile/.env` has your Supabase keys, and starts the backend only when `CollegeMacro-backend/.env` has the service role key. In the Expo terminal, press `w` to reopen the browser, or scan the QR code with Expo Go to open the app on your phone (on the same Wi-Fi). Use `--port=8082` after `--` to pick another port, e.g. `npm run demo -- --port=8082`.
+
 ## Run the backend
 
 From `CollegeMacro-backend/`:

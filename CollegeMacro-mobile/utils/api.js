@@ -1,6 +1,8 @@
-import { supabase } from './config';
+import { DEMO_MODE, supabase } from './config';
+import { createDemoBackend } from './demo/backend';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const demoBackend = DEMO_MODE ? createDemoBackend(supabase) : null;
 
 // Calls the MacroHall backend as the signed-in user. Throws an Error carrying
 // the server's message (and HTTP status) on failure.
@@ -13,6 +15,7 @@ export async function getFromBackend(path) {
 }
 
 async function callBackend(method, path, body) {
+  if (demoBackend) return demoBackend(method, path, body);
   if (!BACKEND_URL) {
     throw new Error('EXPO_PUBLIC_BACKEND_URL is not set.');
   }

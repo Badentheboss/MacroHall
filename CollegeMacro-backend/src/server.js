@@ -19,6 +19,25 @@ function defaultSupabase() {
   return require('../supabaseClient')();
 }
 
+// The phone app doesn't need CORS; the Expo web preview on localhost does.
+const CORS_ORIGINS = new Set(
+  (process.env.CORS_ORIGINS || 'http://localhost:8081,http://127.0.0.1:8081').split(',').map((o) => o.trim()).filter(Boolean)
+);
+
+function cors(req, res, next) {
+  const origin = req.headers.origin;
+  if (origin && CORS_ORIGINS.has(origin)) {
+    res.set({
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      Vary: 'Origin',
+    });
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+  }
+  return next();
+}
+
 async function consumeQuota(supabase, userId) {
   const { data, error } = await supabase.rpc('consume_ai_quota', { p_user: userId, p_limit: AI_DAILY_LIMIT });
   if (error) throw error;
@@ -28,6 +47,7 @@ async function consumeQuota(supabase, userId) {
 function createApp({ getSupabase = defaultSupabase, anthropic, extract = extractMenu, occupancyFetch } = {}) {
   const app = express();
   const auth = requireUser(getSupabase);
+  app.use(cors);
 
   app.get('/health', (_, res) => {
     res.json({ ok: true, service: 'CollegeMacro backend' });

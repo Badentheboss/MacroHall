@@ -3,6 +3,8 @@
   "private": true,
   "description": "Repo-level helper scripts. The apps live in CollegeMacro-backend and CollegeMacro-mobile.",
   "scripts": {
+    "dev": "node scripts/dev.js",
+    "demo": "node scripts/dev.js --demo",
     "setup": "node scripts/setup.js",
     "env": "node scripts/setup.js --env-only"
   }
