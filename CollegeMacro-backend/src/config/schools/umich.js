@@ -1,6 +1,5 @@
 module.exports = {
   slug: 'umich',
-  name: 'University of Michigan',
   listingUrl: 'https://dining.umich.edu/menus-locations/dining-halls/',
   adapter: 'umich',
   fetchMode: 'browser',

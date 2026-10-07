@@ -1,0 +1,26 @@
+{
+  "status": "success",
+  "menu": {
+    "periods": {
+      "id": "p-dinner",
+      "name": "Dinner",
+      "categories": [
+        {
+          "id": "c1",
+          "name": "Homestyle",
+          "items": [
+            {
+              "id": "i1",
+              "name": "Turkey Meatloaf",
+              "nutrients": [
+                { "name": "Calories", "value": "260", "uom": "kcal", "value_numeric": "260" },
+                { "name": "Protein (g)", "value": "28", "uom": "g", "value_numeric": "28" }
+              ],
+              "filters": [{ "name": "Egg", "type": "allergen" }]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

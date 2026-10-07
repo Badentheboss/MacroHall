@@ -18,6 +18,7 @@ function mergeMenuItems(items) {
         allergens: [],
         traits: [],
         nutrition: {},
+        nutritionSource: item.nutritionSource || 'official',
       });
     }
 

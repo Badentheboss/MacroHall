@@ -1,0 +1,13 @@
+{
+  "ID": "item-1",
+  "Name": "Black Bean Burger",
+  "Nutrition": [
+    { "Name": "Serving Size", "LabelValue": "1 each", "DailyValue": null },
+    { "Name": "Calories", "LabelValue": "290", "DailyValue": null },
+    { "Name": "Total fat", "LabelValue": "9g", "DailyValue": "12%" },
+    { "Name": "Total Carbohydrate", "LabelValue": "38g", "DailyValue": "14%" },
+    { "Name": "Protein", "LabelValue": "15g", "DailyValue": null },
+    { "Name": "Sodium", "LabelValue": "640mg", "DailyValue": "28%" },
+    { "Name": "Iron", "LabelValue": "3.6mg", "DailyValue": "20%" }
+  ]
+}

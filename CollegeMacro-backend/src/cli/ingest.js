@@ -7,24 +7,37 @@ function readArg(name, fallback = '') {
   return hit.slice(name.length + 3);
 }
 
+function summarize(result) {
+  return result.menus
+    .map((menu) => {
+      const items = menu.halls.reduce((sum, hall) => sum + hall.items.length, 0);
+      return `${menu.date}: ${menu.halls.length} halls, ${items} items`;
+    })
+    .join(' | ');
+}
+
 async function main() {
   const schoolSlug = readArg('school', 'umich');
   const persist = readArg('persist', 'false') === 'true';
+  const targets = schoolSlug === 'all' ? schools.map((school) => school.slug) : [schoolSlug];
+  const failures = [];
 
-  if (schoolSlug === 'all') {
-    for (const school of schools) {
-      console.log(`Ingesting ${school.slug}...`);
-      await ingestSchool({ schoolSlug: school.slug, persist });
+  // One school failing (a site redesign, a timeout) must not stop the others.
+  for (const slug of targets) {
+    try {
+      const result = await ingestSchool({ schoolSlug: slug, persist });
+      console.log(`${slug}: ${summarize(result)}`);
+      for (const warning of result.errors) console.warn(`${slug}: ${warning}`);
+    } catch (error) {
+      failures.push(slug);
+      console.error(`${slug}: FAILED - ${error.message}`);
     }
-    console.log('Ingestion complete for all schools.');
-    return;
   }
 
-  const result = await ingestSchool({ schoolSlug, persist });
-  console.log(`Ingested ${result.halls.length} halls for ${result.school.slug}.`);
+  if (failures.length > 0) {
+    console.error(`Ingestion failed for: ${failures.join(', ')}`);
+    process.exitCode = 1;
+  }
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+main();

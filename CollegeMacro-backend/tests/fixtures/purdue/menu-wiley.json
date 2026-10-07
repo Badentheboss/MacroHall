@@ -1,0 +1,33 @@
+{
+  "Location": "Wiley",
+  "Date": "2026-10-07",
+  "IsPublished": true,
+  "Notes": null,
+  "Meals": [
+    {
+      "Name": "Lunch",
+      "Type": "Lunch",
+      "Status": "Open",
+      "Hours": { "StartTime": "10:30:00", "EndTime": "14:00:00" },
+      "Stations": [
+        {
+          "Name": "Leaf & Ladle",
+          "Notes": null,
+          "Items": [
+            { "ID": "item-1", "Name": "Black Bean Burger", "IsVegetarian": true, "Allergens": [ { "Name": "Soy", "Value": true }, { "Name": "Milk", "Value": false }, { "Name": "Vegan", "Value": true } ] },
+            { "ID": "item-2", "Name": "Mystery Item", "IsVegetarian": false, "Allergens": [] }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Dinner",
+      "Type": "Dinner",
+      "Status": "Open",
+      "Hours": { "StartTime": "17:00:00", "EndTime": "21:00:00" },
+      "Stations": [
+        { "Name": "Leaf & Ladle", "Items": [ { "ID": "item-1", "Name": "Black Bean Burger", "IsVegetarian": true, "Allergens": [ { "Name": "Soy", "Value": true } ] } ] }
+      ]
+    }
+  ]
+}

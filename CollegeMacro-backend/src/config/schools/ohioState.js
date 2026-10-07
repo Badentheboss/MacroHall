@@ -1,22 +1,14 @@
+// Ohio State publishes every dining location on Nutrislice (osu.nutrislice.com).
+// Locations are discovered from the district on each run; list slugs in
+// includeSchools to limit ingestion to the all-you-care-to-eat halls once the
+// first live run shows which locations exist.
 module.exports = {
   slug: 'ohio-state',
-  name: 'Ohio State',
-  listingUrl: 'https://dining.osu.edu/locations',
-  adapter: 'ohio-state',
+  adapter: 'nutrislice',
   fetchMode: 'http',
-  selectors: {
-    listingHallLinks: '#locations [data-location]',
-    hallName: '.venue-title',
-    mealBlocks: '.daypart',
-    mealName: '.daypart-name',
-    stationBlocks: '.category',
-    stationName: '.category-title',
-    items: '.entry',
-    itemName: '.entry-name',
-    itemAllergens: '.entry-allergens li',
-    itemTraits: '.entry-traits li',
-    nutritionRows: '.entry-nutrition tr',
-    nutritionRowLabel: 'th',
-    nutritionRowValue: 'td',
+  nutrislice: {
+    district: 'osu',
+    includeSchools: [],
+    excludeSchools: [],
   },
 };

@@ -1,0 +1,18 @@
+[
+  {
+    "id": 101,
+    "name": "Traditions at Scott",
+    "slug": "traditions-at-scott",
+    "active_menu_types": [
+      { "id": 1, "name": "Breakfast", "slug": "breakfast" },
+      { "id": 2, "name": "Lunch", "slug": "lunch" },
+      { "id": 3, "name": "Dinner", "slug": "dinner" }
+    ]
+  },
+  {
+    "id": 102,
+    "name": "Berry Cafe",
+    "slug": "berry-cafe",
+    "active_menu_types": [{ "id": 4, "name": "All Day", "slug": "all-day" }]
+  }
+]

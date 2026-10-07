@@ -1,0 +1,58 @@
+{
+  "start_date": "2026-10-04",
+  "menu_type_id": 3,
+  "days": [
+    { "date": "2026-10-06", "menu_items": [] },
+    {
+      "date": "2026-10-07",
+      "menu_items": [
+        { "id": 1, "position": 0, "is_section_title": true, "text": "Grill", "food": null },
+        {
+          "id": 2,
+          "position": 1,
+          "is_section_title": false,
+          "text": "",
+          "food": {
+            "id": 9001,
+            "name": "Grilled Chicken Breast",
+            "food_category": "entree",
+            "rounded_nutrition_info": {
+              "calories": 210, "g_fat": 4.5, "g_saturated_fat": 1, "g_trans_fat": 0,
+              "mg_cholesterol": 95, "g_carbs": 1, "g_sugar": 0, "g_added_sugar": 0,
+              "mg_sodium": 430, "mg_potassium": null, "g_fiber": 0, "g_protein": 40,
+              "mg_iron": 1.8, "mg_calcium": 26, "mg_vitamin_c": 0, "iu_vitamin_a": 40, "re_vitamin_a": 12
+            },
+            "serving_size_info": { "serving_size_amount": "113", "serving_size_unit": "g" },
+            "icons": { "food_icons": [ { "name": "Halal" }, { "name": "Gluten Free" } ] }
+          }
+        },
+        { "id": 3, "position": 2, "is_section_title": true, "text": "Pasta", "food": null },
+        {
+          "id": 4,
+          "position": 3,
+          "is_section_title": false,
+          "food": {
+            "id": 9002,
+            "name": "Penne Alfredo",
+            "rounded_nutrition_info": { "calories": 520, "g_fat": 22, "g_carbs": 60, "g_protein": 18, "mg_sodium": 780, "mg_calcium": 130 },
+            "serving_size_info": { "serving_size_amount": "1", "serving_size_unit": "cup" },
+            "icons": { "food_icons": [ { "name": "Vegetarian" }, { "name": "Contains Milk" }, { "name": "Wheat" } ] }
+          }
+        },
+        {
+          "id": 5,
+          "position": 4,
+          "is_section_title": false,
+          "text": "Ask about today's special",
+          "food": null
+        },
+        {
+          "id": 6,
+          "position": 5,
+          "is_section_title": false,
+          "food": { "id": 9003, "name": "Lemon Wedge", "rounded_nutrition_info": {}, "icons": { "food_icons": [] } }
+        }
+      ]
+    }
+  ]
+}

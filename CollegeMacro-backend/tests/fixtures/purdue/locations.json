@@ -1,0 +1,6 @@
+{
+  "Location": [
+    { "LocationId": "WILY", "Name": "Wiley", "FormalName": "Wiley Dining Court", "ShortName": "Wiley", "Type": "Dining Court", "Latitude": 40.4285, "Longitude": -86.9205 },
+    { "LocationId": "PETE", "Name": "Pete's Za", "FormalName": "Pete's Za", "ShortName": "Pete's", "Type": "Quick Bites", "Latitude": 40.4241, "Longitude": -86.9195 }
+  ]
+}

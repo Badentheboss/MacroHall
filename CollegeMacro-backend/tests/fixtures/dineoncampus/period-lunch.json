@@ -1,0 +1,41 @@
+{
+  "status": "success",
+  "menu": {
+    "periods": {
+      "id": "p-lunch",
+      "name": "Lunch",
+      "categories": [
+        {
+          "id": "c1",
+          "name": "Homestyle",
+          "items": [
+            {
+              "id": "i1",
+              "name": "Turkey Meatloaf",
+              "portion": "4 oz",
+              "desc": "",
+              "ingredients": "turkey, egg, breadcrumbs",
+              "nutrients": [
+                { "name": "Calories", "value": "260", "uom": "kcal", "value_numeric": "260" },
+                { "name": "Protein (g)", "value": "28", "uom": "g", "value_numeric": "28" },
+                { "name": "Total Carbohydrates (g)", "value": "12", "uom": "g", "value_numeric": "12" },
+                { "name": "Total Fat (g)", "value": "11", "uom": "g", "value_numeric": "11" },
+                { "name": "Sugar (g)", "value": "4", "uom": "g", "value_numeric": "4" },
+                { "name": "Sodium (mg)", "value": "610", "uom": "mg", "value_numeric": "610" },
+                { "name": "Iron", "value": "2.7", "uom": "mg", "value_numeric": "2.7" },
+                { "name": "Calories From Fat", "value": "99", "uom": "kcal", "value_numeric": "99" }
+              ],
+              "filters": [
+                { "id": "f1", "name": "Egg", "type": "allergen", "icon": true },
+                { "id": "f2", "name": "Wheat", "type": "allergen", "icon": true },
+                { "id": "f3", "name": "Balanced U", "type": "label", "icon": true }
+              ],
+              "sort_order": 1
+            },
+            { "id": "i2", "name": "Water", "nutrients": [], "filters": [] }
+          ]
+        }
+      ]
+    }
+  }
+}

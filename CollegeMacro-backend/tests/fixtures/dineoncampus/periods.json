@@ -1,0 +1,1 @@
+{ "status": "success", "periods": [ { "id": "p-lunch", "name": "Lunch", "sort_order": 1 }, { "id": "p-dinner", "name": "Dinner", "sort_order": 2 } ] }
