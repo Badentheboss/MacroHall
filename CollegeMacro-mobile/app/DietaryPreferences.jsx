@@ -1,15 +1,100 @@
+// Dietary preferences: allergies and eating preferences as wrapping chip groups.
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView } from "react-native";
-import { useTheme } from '../context/ThemeContext';
-import { supabase } from "../utils/config";
-import { MaterialIcons } from '@expo/vector-icons';
+import { Platform, View, useWindowDimensions } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { supabase } from "../utils/config";
+import { fonts, space, useStyles } from "../theme";
+import { Button, Card, Chip, FadeIn, Screen, Txt } from "../components/kit";
+
+const allergenOptions = [
+  "beef",
+  "eggs",
+  "fish",
+  "milk",
+  "oats",
+  "peanuts",
+  "pork",
+  "sesame seed",
+  "shellfish",
+  "soy",
+  "tree nuts",
+  "wheat/barley/rye",
+  "item is deep fried",
+  "alcohol"
+];
+
+const dietaryPreferences = [
+  "Gluten Free",
+  "Halal",
+  "Spicy",
+  "Vegan",
+  "Vegetarian",
+  "Kosher",
+  "Nutrient Dense Low",
+  "Nutrient Dense Low Medium",
+  "Nutrient Dense Medium",
+  "Nutrient Dense Medium High",
+  "Nutrient Dense High",
+  "Carbon Footprint High",
+  "Carbon Footprint Medium",
+  "Carbon Footprint Low"
+];
+
+// Display-only labels; the stored values stay exactly as above.
+const sentenceCase = (text) => {
+  const lower = text.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+};
+const allergenLabel = (value) => (value === "item is deep fried" ? "Deep fried" : sentenceCase(value));
+
+const PREFERENCE_GROUPS = [
+  { title: "Diet", prefix: "", items: dietaryPreferences.filter((p) => !p.startsWith("Nutrient Dense") && !p.startsWith("Carbon Footprint")) },
+  { title: "Nutrient density", prefix: "Nutrient Dense ", items: dietaryPreferences.filter((p) => p.startsWith("Nutrient Dense")) },
+  { title: "Carbon footprint", prefix: "Carbon Footprint ", items: dietaryPreferences.filter((p) => p.startsWith("Carbon Footprint")) },
+];
+
+const makeStyles = (c) => ({
+  root: { backgroundColor: c.bg },
+  content: { gap: space.xl, paddingTop: space.sm, paddingBottom: space.xxl },
+  group: { gap: space.sm },
+  head: { paddingHorizontal: space.xs, gap: space.xs },
+  headTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  card: { gap: space.lg },
+  subgroup: { gap: space.sm },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  bar: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    backgroundColor: c.bg,
+    borderTopWidth: 1,
+    borderTopColor: c.hairline,
+  },
+});
+
+function SectionHead({ title, body, count }) {
+  const styles = useStyles(makeStyles);
+  return (
+    <View style={styles.head}>
+      <View style={styles.headTop}>
+        <Txt variant="overline" tone="muted">{title}</Txt>
+        {count > 0 ? <Txt variant="caption" tone="muted">{count} selected</Txt> : null}
+      </View>
+      <Txt variant="small" tone="muted">{body}</Txt>
+    </View>
+  );
+}
 
 export default function DietaryPreferences() {
-  const { isDarkMode } = useTheme();
+  const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const { height: windowHeight } = useWindowDimensions();
   const navigation = useNavigation();
   const [allergens, setAllergens] = useState([]);
   const [preferences, setPreferences] = useState([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function fetchUserPreferences() {
@@ -37,42 +122,8 @@ export default function DietaryPreferences() {
     fetchUserPreferences();
   }, []);
 
-  const allergenOptions = [
-    "beef",
-    "eggs",
-    "fish",
-    "milk",
-    "oats",
-    "peanuts",
-    "pork",
-    "sesame seed",
-    "shellfish",
-    "soy",
-    "tree nuts",
-    "wheat/barley/rye",
-    "item is deep fried",
-    "alcohol"
-  ];
-
-  const dietaryPreferences = [
-    "Gluten Free",
-    "Halal",
-    "Spicy",
-    "Vegan",
-    "Vegetarian",
-    "Kosher",
-    "Nutrient Dense Low",
-    "Nutrient Dense Low Medium",
-    "Nutrient Dense Medium",
-    "Nutrient Dense Medium High",
-    "Nutrient Dense High",
-    "Carbon Footprint High",
-    "Carbon Footprint Medium",
-    "Carbon Footprint Low"
-  ];
-
   const toggleAllergen = (allergen) => {
-    setAllergens(current => 
+    setAllergens(current =>
       current.includes(allergen)
         ? current.filter(a => a !== allergen)
         : [...current, allergen]
@@ -80,7 +131,7 @@ export default function DietaryPreferences() {
   };
 
   const togglePreference = (preference) => {
-    setPreferences(current => 
+    setPreferences(current =>
       current.includes(preference)
         ? current.filter(p => p !== preference)
         : [...current, preference]
@@ -89,6 +140,7 @@ export default function DietaryPreferences() {
 
   const savePreferences = async () => {
     try {
+      setSaving(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user logged in');
 
@@ -104,155 +156,67 @@ export default function DietaryPreferences() {
       navigation.goBack();
     } catch (error) {
       console.error('Error saving preferences:', error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const styles = StyleSheet.create({
-    safeArea: {
-      flex: 1,
-      backgroundColor: isDarkMode ? '#121212' : "#f5f7fa",
-    },
-    container: {
-      flex: 1,
-      padding: 20,
-      paddingTop: 20,
-    },
-    scrollContent: {
-      paddingBottom: 80,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 24,
-    },
-    backButton: {
-      marginRight: 16,
-    },
-    title: {
-      fontSize: 28,
-      fontWeight: "800",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-    },
-    section: {
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.1)",
-    },
-    sectionTitle: {
-      fontSize: 20,
-      fontWeight: "800",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      marginBottom: 12,
-    },
-    sectionSubtitle: {
-      fontSize: 14,
-      color: isDarkMode ? '#888' : "#666",
-      marginBottom: 16,
-    },
-    optionRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.1)",
-    },
-    optionText: {
-      fontSize: 16,
-      color: isDarkMode ? '#E0E0E0' : "#333",
-    },
-    saveButtonContainer: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      padding: 20,
-      backgroundColor: isDarkMode ? '#121212' : "#f5f7fa",
-      borderTopWidth: 1,
-      borderTopColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.1)",
-    },
-    saveButton: {
-      backgroundColor: '#32745f',
-      padding: 16,
-      borderRadius: 12,
-      alignItems: 'center',
-    },
-    saveButtonText: {
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-  });
-
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <MaterialIcons 
-              name="arrow-back" 
-              size={24} 
-              color={isDarkMode ? '#E0E0E0' : '#32745f'} 
-            />
-          </TouchableOpacity>
-          <Text style={styles.title}>Dietary Preferences</Text>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Allergens</Text>
-            <Text style={styles.sectionSubtitle}>(Select all that apply)</Text>
-            {allergenOptions.map((allergen) => (
-              <TouchableOpacity 
-                key={allergen}
-                style={styles.optionRow}
-                onPress={() => toggleAllergen(allergen)}
-              >
-                <Text style={styles.optionText}>{allergen}</Text>
-                <MaterialIcons
-                  name={allergens.includes(allergen) ? "check-box" : "check-box-outline-blank"}
-                  size={24}
-                  color={isDarkMode ? '#E0E0E0' : "#32745f"}
+    // On web the stack lets cards grow with the document; pin the height so the
+    // Save bar stays docked at the bottom like it does on a phone.
+    <View style={[styles.root, Platform.OS === "web" ? { height: windowHeight - headerHeight } : { flex: 1 }]}>
+      <Screen showsVerticalScrollIndicator={false} contentStyle={styles.content}>
+        <FadeIn index={0} style={styles.group}>
+          <SectionHead
+            title="Allergies"
+            body="We'll flag dishes that contain these so you can skip them."
+            count={allergens.length}
+          />
+          <Card>
+            <View style={styles.chips}>
+              {allergenOptions.map((allergen) => (
+                <Chip
+                  key={allergen}
+                  label={allergenLabel(allergen)}
+                  active={allergens.includes(allergen)}
+                  icon={allergens.includes(allergen) ? "checkmark" : undefined}
+                  onPress={() => toggleAllergen(allergen)}
                 />
-              </TouchableOpacity>
-            ))}
-          </View>
+              ))}
+            </View>
+          </Card>
+        </FadeIn>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Preferences</Text>
-            <Text style={styles.sectionSubtitle}>(Select all that apply)</Text>
-            {dietaryPreferences.map((preference) => (
-              <TouchableOpacity 
-                key={preference}
-                style={styles.optionRow}
-                onPress={() => togglePreference(preference)}
-              >
-                <Text style={styles.optionText}>{preference}</Text>
-                <MaterialIcons
-                  name={preferences.includes(preference) ? "check-box" : "check-box-outline-blank"}
-                  size={24}
-                  color={isDarkMode ? '#E0E0E0' : "#32745f"}
-                />
-              </TouchableOpacity>
+        <FadeIn index={1} style={styles.group}>
+          <SectionHead
+            title="Preferences"
+            body="Pick what you look for and we'll surface matching dishes first."
+            count={preferences.length}
+          />
+          <Card style={styles.card}>
+            {PREFERENCE_GROUPS.map((group) => (
+              <View key={group.title} style={styles.subgroup}>
+                <Txt variant="small" style={{ fontFamily: fonts.semibold }}>{group.title}</Txt>
+                <View style={styles.chips}>
+                  {group.items.map((preference) => (
+                    <Chip
+                      key={preference}
+                      label={sentenceCase(preference.slice(group.prefix.length))}
+                      active={preferences.includes(preference)}
+                      icon={preferences.includes(preference) ? "checkmark" : undefined}
+                      onPress={() => togglePreference(preference)}
+                    />
+                  ))}
+                </View>
+              </View>
             ))}
-          </View>
-        </ScrollView>
+          </Card>
+        </FadeIn>
+      </Screen>
 
-        <View style={styles.saveButtonContainer}>
-          <TouchableOpacity 
-            style={styles.saveButton}
-            onPress={savePreferences}
-          >
-            <Text style={styles.saveButtonText}>Save Preferences</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
+        <Button title="Save" size="lg" onPress={savePreferences} loading={saving} />
       </View>
-    </SafeAreaView>
+    </View>
   );
-} 
+}

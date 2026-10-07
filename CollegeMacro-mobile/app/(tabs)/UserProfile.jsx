@@ -1,11 +1,16 @@
-// UserProfile.jsx
+// UserProfile.jsx — "Body & goals": a calm form for the numbers behind your
+// daily targets. Presentation uses the MacroHall kit; load/save logic is unchanged.
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, ScrollView, Keyboard, Alert } from "react-native";
-import { MaterialIcons } from '@expo/vector-icons';
+import { View, KeyboardAvoidingView, Keyboard, Platform } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from "../../utils/config";
 import { buildMacroTargets, DEFAULT_DIET_KEY } from "../../utils/macros";
 import { useTheme } from '../../context/ThemeContext';
-import { useNavigation } from '@react-navigation/native';
+import { fonts, space, useAppTheme, useStyles } from '../../theme';
+import { Button, Card, Chip, Divider, FadeIn, NumberTicker, Row, Screen, Segmented, Tap, TextField, Txt } from '../../components/kit';
 
 const MAX_WEIGHT_LBS = 600;
 const MAX_WEIGHT_KG = 272; // Roughly the kg equivalent of 600 lbs
@@ -31,6 +36,62 @@ const WEIGHT_GOAL_OPTIONS = [
 ];
 const METRIC = 'metric';
 const IMPERIAL = 'imperial';
+
+// Display-only helpers: the stored values stay the strings above.
+const SEX_SEGMENTS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'prefer not to say', label: 'Rather not say' },
+];
+const HEIGHT_UNITS = [
+  { value: METRIC, label: 'cm' },
+  { value: IMPERIAL, label: 'ft/in' },
+];
+const WEIGHT_UNITS = [
+  { value: METRIC, label: 'kg' },
+  { value: IMPERIAL, label: 'lb' },
+];
+const ACTIVITY_DISPLAY = {
+  [ACTIVITY_OPTIONS[0]]: { title: 'Sedentary', subtitle: 'Little to no exercise' },
+  [ACTIVITY_OPTIONS[1]]: { title: 'Lightly active', subtitle: '1–2 workouts a week' },
+  [ACTIVITY_OPTIONS[2]]: { title: 'Moderately active', subtitle: '3–4 workouts a week' },
+  [ACTIVITY_OPTIONS[3]]: { title: 'Very active', subtitle: '5+ workouts a week' },
+  [ACTIVITY_OPTIONS[4]]: { title: 'Athlete', subtitle: 'Training twice a day' },
+};
+const describeActivity = (option) => ACTIVITY_DISPLAY[option] || { title: option, subtitle: null };
+
+const GOAL_DIRECTIONS = [
+  { value: 'lose', label: 'Lose' },
+  { value: 'maintain', label: 'Maintain' },
+  { value: 'gain', label: 'Gain' },
+];
+const GOAL_PACES = [
+  { value: 'slow', label: 'Slow', rate: '0.25 lb a week' },
+  { value: 'moderate', label: 'Moderate', rate: '0.5 lb a week' },
+  { value: 'fast', label: 'Fast', rate: '1 lb a week' },
+];
+const GOAL_MATRIX = {
+  lose: { slow: WEIGHT_GOAL_OPTIONS[0], moderate: WEIGHT_GOAL_OPTIONS[1], fast: WEIGHT_GOAL_OPTIONS[2] },
+  gain: { slow: WEIGHT_GOAL_OPTIONS[4], moderate: WEIGHT_GOAL_OPTIONS[5], fast: WEIGHT_GOAL_OPTIONS[6] },
+};
+const goalDirectionOf = (goal = '') => {
+  const normalized = (goal || '').toLowerCase();
+  if (normalized.startsWith('lose')) return 'lose';
+  if (normalized.startsWith('gain')) return 'gain';
+  if (normalized.includes('maintain')) return 'maintain';
+  return null;
+};
+const goalPaceOf = (goal = '') => {
+  const normalized = (goal || '').toLowerCase();
+  if (normalized.includes('slow')) return 'slow';
+  if (normalized.includes('moderate')) return 'moderate';
+  if (normalized.includes('fast')) return 'fast';
+  return null;
+};
+const goalOptionFor = (direction, pace) => {
+  if (direction === 'maintain') return WEIGHT_GOAL_OPTIONS[3];
+  return GOAL_MATRIX[direction]?.[pace || 'moderate'] || '';
+};
 
 const calculateAgeFromBirthday = (birthdayStr) => {
   if (!birthdayStr) return null;
@@ -90,7 +151,13 @@ const calculateAutoCalories = ({ sex, birthday, heightCm, weightKg, activityLeve
 
 export default function UserProfile() {
   const { isDarkMode } = useTheme();
+  const { c } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation();
+  const route = useRoute();
+  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
+  const [saving, setSaving] = useState(false);
   const heightFtRef = useRef(null);
   const heightInRef = useRef(null);
   const heightCmRef = useRef(null);
@@ -415,547 +482,449 @@ export default function UserProfile() {
     }
   };
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: isDarkMode ? '#121212' : "#f5f7fa",
-    },
-    contentContainer: {
-      flex: 1,
-      padding: 20,
-      paddingBottom: 60,
-    },
-    keyboardAwareContainer: {
-      flex: 1,
-      padding: keyboardVisible ? 15 : 20,
-      paddingBottom: keyboardVisible ? 40 : 60,
-    },
-    scrollContainer: {
-      flex: 1,
-      flexGrow: 1,
-    },
-    headerContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 16,
-      paddingTop: 30,
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: '700',
-      color: isDarkMode ? '#E0E0E0' : '#32745f',
-    },
-    closeButton: {
-      position: 'absolute',
-      right: 0,
-      top: 20,
-      padding: 8,
-      borderRadius: 20,
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-    },
-    card: {
-      backgroundColor: isDarkMode ? '#242424' : '#fff',
-      borderRadius: 20,
-      padding: 20,
-      marginBottom: 20,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#333' : 'rgba(50, 116, 95, 0.1)',
-      shadowColor: isDarkMode ? '#000' : '#32745f',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: isDarkMode ? 0.4 : 0.15,
-      shadowRadius: 16,
-      elevation: 8,
-    },
-    label: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: isDarkMode ? '#E0E0E0' : '#2D5A47',
-      marginBottom: 8,
-    },
-    input: {
-      backgroundColor: isDarkMode ? '#333' : '#f5f5f5',
-      borderRadius: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      color: isDarkMode ? '#E0E0E0' : '#2D5A47',
-      fontSize: 16,
-      marginBottom: 8,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#444' : '#E0E0E0',
-    },
-    inputFocused: {
-      borderColor: '#32745f',
-      shadowColor: '#32745f',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.2,
-      shadowRadius: 4,
-      elevation: 3,
-    },
-    buttonRow: {
-      flexDirection: 'row',
-      gap: 12,
-      marginTop: 8,
-    },
-    button: {
-      flex: 1,
-      paddingVertical: 12,
-      borderRadius: 12,
-      alignItems: 'center',
-    },
-    cancelButton: {
-      backgroundColor: isDarkMode ? '#444' : '#F8F9FA',
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#555' : '#DEE2E6',
-    },
-    saveButton: {
-      backgroundColor: '#2D5A47',
-    },
-    buttonText: {
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    cancelButtonText: {
-      color: isDarkMode ? '#E0E0E0' : '#6C757D',
-    },
-    saveButtonText: {
-      color: '#fff',
-    },
-    // Removed duplicate unitToggle styles
-    sexOption: {
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-      borderRadius: 12,
-      borderWidth: 1,
-      marginBottom: 8,
-      minHeight: 48, // Better tap target
-    },
-    sexOptionText: {
-      fontSize: 17,
-      fontWeight: '600',
-    },
-    inputRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 8,
-    },
-    unitToggle: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      backgroundColor: isDarkMode ? '#333' : '#f5f5f5',
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#555' : '#ddd',
-    },
-    unitToggleText: {
-      color: isDarkMode ? '#E0E0E0' : '#333',
-      fontSize: 13,
-      fontWeight: '600',
-    },
-    dropdownButton: {
-      backgroundColor: isDarkMode ? '#333' : '#f5f5f5',
-      borderRadius: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#444' : '#E0E0E0',
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    dropdownButtonText: {
-      fontSize: 16,
-      color: isDarkMode ? '#E0E0E0' : '#2D5A47',
-    },
-    dropdownPlaceholder: {
-      color: isDarkMode ? '#888' : '#999',
-    },
-    dropdownList: {
-      marginTop: 8,
-      borderRadius: 12,
-      backgroundColor: isDarkMode ? '#2b2b2b' : '#fff',
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#444' : '#E0E0E0',
-      overflow: 'hidden',
-    },
-    dropdownOption: {
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-    },
-    dropdownOptionSelected: {
-      backgroundColor: isDarkMode ? 'rgba(50,116,95,0.3)' : 'rgba(50,116,95,0.08)',
-    },
-    dropdownOptionText: {
-      fontSize: 16,
-      color: isDarkMode ? '#E0E0E0' : '#2D5A47',
-    },
-    dropdownOptionTextSelected: {
-      fontWeight: '700',
-    },
-  });
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await saveProfile();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleHeightUnits = () => {
+    setHeightUseMetric(!heightUseMetric);
+    // Auto-focus appropriate input when switching units
+    setTimeout(() => {
+      if (heightUseMetric) {
+        heightFtRef.current?.focus();
+      } else {
+        heightCmRef.current?.focus();
+      }
+    }, 100);
+  };
+
+  const toggleWeightUnits = () => {
+    setWeightUseMetric(!weightUseMetric);
+    // Auto-focus appropriate input when switching units
+    setTimeout(() => {
+      if (weightUseMetric) {
+        weightLbsRef.current?.focus();
+      } else {
+        weightKgRef.current?.focus();
+      }
+    }, 100);
+  };
+
+  // Live preview of the targets Save will write (read-only; saving still
+  // runs the full sanitize + calculate path in saveProfile).
+  const previewHeightCm = heightUseMetric
+    ? parseFloat(heightCm) || 0
+    : (((parseInt(heightFt, 10) || 0) * 12) + (parseInt(heightIn, 10) || 0)) * 2.54;
+  const previewWeightKg = weightUseMetric
+    ? parseFloat(weightKg) || 0
+    : (parseFloat(weightLbs) || 0) * 0.45359237;
+  const previewCalories = manualEntry
+    ? null
+    : calculateAutoCalories({
+        sex: userSex,
+        birthday,
+        heightCm: previewHeightCm,
+        weightKg: previewWeightKg,
+        activityLevel,
+        weightGoal,
+      });
+  const previewMacros = previewCalories
+    ? buildMacroTargets({ calories: previewCalories, dietKey: dietType, dailyValues })
+    : null;
+  const targets = {
+    calories: previewCalories || dailyValues?.dailyCalories || 0,
+    protein: previewMacros?.dailyProtein ?? dailyValues?.dailyProtein ?? 0,
+    carbs: previewMacros?.dailyCarbs ?? dailyValues?.dailyCarbs ?? 0,
+    fat: previewMacros?.dailyFat ?? dailyValues?.dailyFat ?? 0,
+  };
+  const hasTargets = targets.calories > 0;
+  const age = calculateAgeFromBirthday(birthday);
+  const goalDirection = goalDirectionOf(weightGoal);
+  const goalPace = goalPaceOf(weightGoal);
+  const paceRate = (GOAL_PACES.find((pace) => pace.value === goalPace) || GOAL_PACES[1]).rate;
+  const firstTimeSetup = Boolean(route?.params?.firstTimeSetup);
+
+  let targetsNote;
+  if (manualEntry) {
+    targetsNote = "You set these by hand, so saving here won't change them.";
+  } else if (previewCalories) {
+    targetsNote = 'Estimated from your details. Tap Save to use them.';
+  } else if (!age) {
+    targetsNote = 'Add your birthday to your account to estimate targets.';
+  } else {
+    targetsNote = 'Fill in your height and weight to estimate targets.';
+  }
+
+  const macroItems = [
+    { key: 'protein', label: 'protein', value: targets.protein, color: c.protein },
+    { key: 'carbs', label: 'carbs', value: targets.carbs, color: c.carbs },
+    { key: 'fat', label: 'fat', value: targets.fat, color: c.fat },
+  ];
 
   return (
-    <View style={styles.container}>
-      <View style={styles.headerContainer}>
-        <Text style={styles.title}>Edit Profile</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton}>
-          <MaterialIcons name="close" size={24} color={isDarkMode ? '#E0E0E0' : '#32745f'} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView 
-        style={styles.scrollContainer}
-        keyboardShouldPersistTaps="handled"
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={headerHeight}
+    >
+      <Screen
         showsVerticalScrollIndicator={false}
-        scrollEnabled={true}
-        contentContainerStyle={{ 
-          paddingBottom: 300,
-          backgroundColor: isDarkMode ? '#242424' : '#fff',
-          borderRadius: 20,
-          padding: 20,
-          margin: 20,
-          borderWidth: 1,
-          borderColor: isDarkMode ? '#333' : 'rgba(50, 116, 95, 0.1)',
-          shadowColor: isDarkMode ? '#000' : '#32745f',
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: isDarkMode ? 0.4 : 0.15,
-          shadowRadius: 16,
-          elevation: 8,
-          minHeight: 800,
-        }}
-        nestedScrollEnabled={true}
         automaticallyAdjustKeyboardInsets={true}
+        contentStyle={styles.content}
       >
-          {/* Sex Selection */}
-          <View style={{ marginBottom: 16 }}>
-            <Text style={styles.label}>Sex</Text>
-            {(!userSex || sexOptionsExpanded) ? (
-              SEX_OPTIONS.map(option => (
-                <TouchableOpacity
-                  key={option}
-                  onPress={() => {
-                    setUserSex(option);
-                    setSexOptionsExpanded(false);
-                  }}
-                  style={[
-                    styles.sexOption,
-                    {
-                      borderColor: userSex === option ? '#32745f' : (isDarkMode ? '#555' : '#ccc'),
-                      backgroundColor: userSex === option ? (isDarkMode ? 'rgba(50,116,95,0.3)' : 'rgba(50,116,95,0.1)') : 'transparent'
-                    }
-                  ]}
-                >
-                  <Text style={[
-                    styles.sexOptionText,
-                    {
-                      color: isDarkMode ? '#E0E0E0' : '#333',
-                      fontWeight: userSex === option ? '600' : '400',
-                      textTransform: option === 'prefer not to say' ? 'none' : 'capitalize'
-                    }
-                  ]}>
-                    {option}
-                  </Text>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <TouchableOpacity
-                onPress={() => setSexOptionsExpanded(true)}
-                style={[
-                  styles.sexOption,
-                  {
-                    borderColor: '#32745f',
-                    backgroundColor: isDarkMode ? 'rgba(50,116,95,0.3)' : 'rgba(50,116,95,0.1)',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.sexOptionText,
-                    {
-                      color: isDarkMode ? '#E0E0E0' : '#333',
-                      fontWeight: '600',
-                      textTransform: userSex === 'prefer not to say' ? 'none' : 'capitalize'
-                    }
-                  ]}
-                >
-                  {userSex}
-                </Text>
-                <MaterialIcons
-                  name="keyboard-arrow-down"
-                  size={20}
-                  color={isDarkMode ? '#E0E0E0' : '#32745f'}
-                />
-              </TouchableOpacity>
-            )}
-          </View>
+        <FadeIn index={0}>
+          <Txt variant="body" tone="muted">
+            {firstTimeSetup
+              ? "Let's set your daily targets. You can change these any time."
+              : 'We use these to set your daily calories and macros.'}
+          </Txt>
+        </FadeIn>
 
-          {/* Height */}
-          <View style={{ marginBottom: 16 }}>
-            <View style={styles.inputRow}>
-              <Text style={styles.label}>Height</Text>
-              <TouchableOpacity 
-                onPress={() => {
-                  setHeightUseMetric(!heightUseMetric);
-                  // Auto-focus appropriate input when switching units
-                  setTimeout(() => {
-                    if (heightUseMetric) {
-                      heightFtRef.current?.focus();
-                    } else {
-                      heightCmRef.current?.focus();
-                    }
-                  }, 100);
-                }}
-                style={styles.unitToggle}
-              >
-                <Text style={styles.unitToggleText}>
-                  {heightUseMetric ? 'cm' : 'ft/in'}
-                </Text>
-              </TouchableOpacity>
+        {/* Targets */}
+        <FadeIn index={1}>
+          <Card tone="ink" style={styles.targetsCard}>
+            <Txt variant="overline" tone="inverse" style={styles.dim}>Daily targets</Txt>
+            <View style={styles.caloriesRow}>
+              {hasTargets ? (
+                <NumberTicker value={targets.calories} variant="display" color={c.inverse} />
+              ) : (
+                <Txt variant="display" tone="inverse">—</Txt>
+              )}
+              <Txt variant="small" tone="inverse" style={styles.dim}>calories a day</Txt>
             </View>
-            {heightUseMetric ? (
-              <TextInput
-                ref={heightCmRef}
-                style={styles.input}
-                value={heightCm}
-                onChangeText={setHeightCm}
-                keyboardType="decimal-pad"
-                placeholder="Enter height (cm)"
-                placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  setHeightCm(current => clampHeightCmValue(current));
-                }}
-                onEndEditing={() => {
-                  setHeightCm(current => clampHeightCmValue(current));
+            <View style={styles.macroRow}>
+              {macroItems.map((item) => (
+                <View key={item.key} style={styles.macroItem}>
+                  <View style={styles.macroValue}>
+                    <View style={[styles.macroDot, { backgroundColor: item.color }]} />
+                    {hasTargets ? (
+                      <NumberTicker value={item.value} color={c.inverse} format={(n) => `${Math.round(n)}g`} />
+                    ) : (
+                      <Txt variant="number" tone="inverse">—</Txt>
+                    )}
+                  </View>
+                  <Txt variant="caption" tone="inverse" style={styles.dim}>{item.label}</Txt>
+                </View>
+              ))}
+            </View>
+            <Txt variant="caption" tone="inverse" style={styles.dim}>{targetsNote}</Txt>
+          </Card>
+        </FadeIn>
+
+        {/* About you */}
+        <FadeIn index={2} style={styles.group}>
+          <Txt variant="overline" tone="muted" style={styles.overline}>About you</Txt>
+          <Card style={styles.cardBody}>
+            <View style={styles.field}>
+              <Txt variant="small" style={styles.label}>Sex</Txt>
+              <Segmented
+                options={SEX_SEGMENTS}
+                value={userSex}
+                onChange={(option) => {
+                  setUserSex(option);
+                  setSexOptionsExpanded(false);
                 }}
               />
-            ) : (
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput
-                  ref={heightFtRef}
-                  style={[styles.input, { flex: 1 }]}
-                  value={heightFt}
-                  onChangeText={(text) => {
-                    const numericText = text.replace(/[^0-9]/g, '').slice(0, 1);
-                    setHeightFt(numericText);
-                  }}
-                  keyboardType="number-pad"
-                  placeholder="ft"
-                  placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                  maxLength={1}
-                  returnKeyType="done"
-                  onSubmitEditing={() => {
-                    setHeightFt(current => clampHeightFtValue(current));
-                  }}
-                  onEndEditing={() => {
-                    setHeightFt(current => clampHeightFtValue(current));
-                  }}
-                />
-                <TextInput
-                  ref={heightInRef}
-                  style={[styles.input, { flex: 1 }]}
-                  value={heightIn}
-                  onChangeText={(text) => {
-                    const numericText = text.replace(/[^0-9]/g, '').slice(0, 2);
-                    setHeightIn(numericText);
-                  }}
-                  keyboardType="number-pad"
-                  placeholder="in"
-                  placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                  maxLength={2}
-                  returnKeyType="done"
-                  onSubmitEditing={() => {
-                    setHeightIn(current => clampHeightInValue(current));
-                  }}
-                  onEndEditing={() => {
-                    setHeightIn(current => clampHeightInValue(current));
-                  }}
-                />
+            </View>
+            <Divider />
+            <Row
+              style={styles.plainRow}
+              title="Age"
+              subtitle={age ? 'From your birthday' : 'Add your birthday to your account'}
+              trailing={<Txt variant="number" style={styles.tabular}>{age ? age : '—'}</Txt>}
+            />
+          </Card>
+        </FadeIn>
+
+        {/* Body */}
+        <FadeIn index={3} style={styles.group}>
+          <Txt variant="overline" tone="muted" style={styles.overline}>Body</Txt>
+          <Card style={styles.cardBody}>
+            <View style={styles.field}>
+              <View style={styles.fieldHead}>
+                <Txt variant="small" style={styles.label}>Height</Txt>
+                <View style={styles.unitSwitch}>
+                  <Segmented
+                    options={HEIGHT_UNITS}
+                    value={heightUseMetric ? METRIC : IMPERIAL}
+                    onChange={(unit) => {
+                      if ((unit === METRIC) !== heightUseMetric) toggleHeightUnits();
+                    }}
+                  />
+                </View>
               </View>
-            )}
-          </View>
-
-          {/* Weight */}
-          <View style={{ marginBottom: 16 }}>
-            <View style={styles.inputRow}>
-              <Text style={styles.label}>Weight</Text>
-              <TouchableOpacity 
-                onPress={() => {
-                  setWeightUseMetric(!weightUseMetric);
-                  // Auto-focus appropriate input when switching units
-                  setTimeout(() => {
-                    if (weightUseMetric) {
-                      weightLbsRef.current?.focus();
-                    } else {
-                      weightKgRef.current?.focus();
-                    }
-                  }, 100);
-                }}
-                style={styles.unitToggle}
-              >
-                <Text style={styles.unitToggleText}>
-                  {weightUseMetric ? 'kg' : 'lbs'}
-                </Text>
-              </TouchableOpacity>
+              {heightUseMetric ? (
+                <UnitField
+                  unit="cm"
+                  ref={heightCmRef}
+                  accessibilityLabel="Height in centimeters"
+                  value={heightCm}
+                  onChangeText={setHeightCm}
+                  keyboardType="decimal-pad"
+                  placeholder="Height"
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    setHeightCm(current => clampHeightCmValue(current));
+                  }}
+                  onEndEditing={() => {
+                    setHeightCm(current => clampHeightCmValue(current));
+                  }}
+                />
+              ) : (
+                <View style={styles.pair}>
+                  <UnitField
+                    unit="ft"
+                    ref={heightFtRef}
+                    style={styles.flex}
+                    accessibilityLabel="Height, feet"
+                    value={heightFt}
+                    onChangeText={(text) => {
+                      const numericText = text.replace(/[^0-9]/g, '').slice(0, 1);
+                      setHeightFt(numericText);
+                    }}
+                    keyboardType="number-pad"
+                    placeholder="Feet"
+                    maxLength={1}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      setHeightFt(current => clampHeightFtValue(current));
+                    }}
+                    onEndEditing={() => {
+                      setHeightFt(current => clampHeightFtValue(current));
+                    }}
+                  />
+                  <UnitField
+                    unit="in"
+                    ref={heightInRef}
+                    style={styles.flex}
+                    accessibilityLabel="Height, inches"
+                    value={heightIn}
+                    onChangeText={(text) => {
+                      const numericText = text.replace(/[^0-9]/g, '').slice(0, 2);
+                      setHeightIn(numericText);
+                    }}
+                    keyboardType="number-pad"
+                    placeholder="Inches"
+                    maxLength={2}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      setHeightIn(current => clampHeightInValue(current));
+                    }}
+                    onEndEditing={() => {
+                      setHeightIn(current => clampHeightInValue(current));
+                    }}
+                  />
+                </View>
+              )}
             </View>
-            {weightUseMetric ? (
-              <TextInput
-                ref={weightKgRef}
-                style={styles.input}
-                value={weightKg}
-                onChangeText={setWeightKg}
-                keyboardType="decimal-pad"
-                placeholder="Enter weight (kg)"
-                placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  setWeightKg(current => clampWeightValue(current, MAX_WEIGHT_KG));
-                }}
-              />
-            ) : (
-              <TextInput
-                ref={weightLbsRef}
-                style={styles.input}
-                value={weightLbs}
-                onChangeText={setWeightLbs}
-                keyboardType="decimal-pad"
-                placeholder="Enter weight (lbs)"
-                placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  setWeightLbs(current => clampWeightValue(current, MAX_WEIGHT_LBS));
-                }}
-              />
-            )}
-          </View>
 
-          {/* Activity Level */}
-          <View style={{ marginBottom: 16 }}>
-            <Text style={styles.label}>Activity Level</Text>
-            <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={() => {
-                Keyboard.dismiss();
-                setActivityDropdownOpen(!activityDropdownOpen);
-              }}
-              activeOpacity={0.9}
-            >
-              <Text
-                style={[
-                  styles.dropdownButtonText,
-                  !activityLevel && styles.dropdownPlaceholder,
-                ]}
-              >
-                {activityLevel || 'Select activity level'}
-              </Text>
-              <MaterialIcons
-                name={activityDropdownOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
-                size={20}
-                color={isDarkMode ? '#E0E0E0' : '#2D5A47'}
-              />
-            </TouchableOpacity>
-            {activityDropdownOpen && (
-              <View style={styles.dropdownList}>
-                {ACTIVITY_OPTIONS.map(option => (
-                  <TouchableOpacity
-                    key={option}
-                    style={[
-                      styles.dropdownOption,
-                      activityLevel === option && styles.dropdownOptionSelected,
-                    ]}
+            <View style={styles.field}>
+              <View style={styles.fieldHead}>
+                <Txt variant="small" style={styles.label}>Weight</Txt>
+                <View style={styles.unitSwitch}>
+                  <Segmented
+                    options={WEIGHT_UNITS}
+                    value={weightUseMetric ? METRIC : IMPERIAL}
+                    onChange={(unit) => {
+                      if ((unit === METRIC) !== weightUseMetric) toggleWeightUnits();
+                    }}
+                  />
+                </View>
+              </View>
+              {weightUseMetric ? (
+                <UnitField
+                  unit="kg"
+                  ref={weightKgRef}
+                  accessibilityLabel="Weight in kilograms"
+                  value={weightKg}
+                  onChangeText={setWeightKg}
+                  keyboardType="decimal-pad"
+                  placeholder="Weight"
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    setWeightKg(current => clampWeightValue(current, MAX_WEIGHT_KG));
+                  }}
+                />
+              ) : (
+                <UnitField
+                  unit="lb"
+                  ref={weightLbsRef}
+                  accessibilityLabel="Weight in pounds"
+                  value={weightLbs}
+                  onChangeText={setWeightLbs}
+                  keyboardType="decimal-pad"
+                  placeholder="Weight"
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    setWeightLbs(current => clampWeightValue(current, MAX_WEIGHT_LBS));
+                  }}
+                />
+              )}
+            </View>
+          </Card>
+        </FadeIn>
+
+        {/* Activity Level */}
+        <FadeIn index={4} style={styles.group}>
+          <Txt variant="overline" tone="muted" style={styles.overline}>Activity level</Txt>
+          <Card padded={false}>
+            {ACTIVITY_OPTIONS.map((option, i) => {
+              const display = describeActivity(option);
+              return (
+                <View key={option}>
+                  {i > 0 ? <Divider style={styles.listDivider} /> : null}
+                  <ChoiceRow
+                    title={display.title}
+                    subtitle={display.subtitle}
+                    selected={activityLevel === option}
                     onPress={() => {
+                      Keyboard.dismiss();
                       setActivityLevel(option);
                       setActivityDropdownOpen(false);
                     }}
-                  >
-                    <Text
-                      style={[
-                        styles.dropdownOptionText,
-                        activityLevel === option && styles.dropdownOptionTextSelected,
-                      ]}
-                    >
-                      {option}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
+                  />
+                </View>
+              );
+            })}
+          </Card>
+          {activityLevel && !ACTIVITY_OPTIONS.includes(activityLevel) ? (
+            <Txt variant="caption" tone="muted" style={styles.overline}>Currently saved: {activityLevel}</Txt>
+          ) : null}
+        </FadeIn>
 
-          {/* Weight Goal */}
-          <View style={{ marginBottom: 16 }}>
-            <Text style={styles.label}>Weight Goal</Text>
-            <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={() => {
+        {/* Weight Goal */}
+        <FadeIn index={5} style={styles.group}>
+          <Txt variant="overline" tone="muted" style={styles.overline}>Weight goal</Txt>
+          <Card style={styles.cardBody}>
+            <Segmented
+              options={GOAL_DIRECTIONS}
+              value={goalDirection}
+              onChange={(direction) => {
                 Keyboard.dismiss();
-                setWeightGoalDropdownOpen(!weightGoalDropdownOpen);
+                setWeightGoal(goalOptionFor(direction, goalPace));
+                setWeightGoalDropdownOpen(false);
               }}
-              activeOpacity={0.9}
-            >
-              <Text
-                style={[
-                  styles.dropdownButtonText,
-                  !weightGoal && styles.dropdownPlaceholder,
-                ]}
-              >
-                {weightGoal || 'Select weight goal'}
-              </Text>
-              <MaterialIcons
-                name={weightGoalDropdownOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
-                size={20}
-                color={isDarkMode ? '#E0E0E0' : '#2D5A47'}
-              />
-            </TouchableOpacity>
-            {weightGoalDropdownOpen && (
-              <View style={styles.dropdownList}>
-                {WEIGHT_GOAL_OPTIONS.map(option => (
-                  <TouchableOpacity
-                    key={option}
-                    style={[
-                      styles.dropdownOption,
-                      weightGoal === option && styles.dropdownOptionSelected,
-                    ]}
-                    onPress={() => {
-                      setWeightGoal(option);
-                      setWeightGoalDropdownOpen(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.dropdownOptionText,
-                        weightGoal === option && styles.dropdownOptionTextSelected,
-                      ]}
-                    >
-                      {option}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            />
+            {goalDirection === 'lose' || goalDirection === 'gain' ? (
+              <View style={styles.field}>
+                <Txt variant="small" style={styles.label}>Pace</Txt>
+                <View style={styles.chipWrap}>
+                  {GOAL_PACES.map((pace) => (
+                    <Chip
+                      key={pace.value}
+                      label={pace.label}
+                      active={goalPace === pace.value}
+                      onPress={() => setWeightGoal(goalOptionFor(goalDirection, pace.value))}
+                    />
+                  ))}
+                </View>
               </View>
-            )}
-          </View>
+            ) : null}
+            <Txt variant="small" tone="muted">
+              {goalDirection === 'maintain'
+                ? 'Stay where you are and fuel your days.'
+                : goalDirection === 'lose'
+                  ? `Losing about ${paceRate}. Slower is easier to keep up.`
+                  : goalDirection === 'gain'
+                    ? `Gaining about ${paceRate}, a small surplus to build muscle.`
+                    : weightGoal
+                      ? `Currently saved: ${weightGoal}`
+                      : 'Pick a direction to tune your calories.'}
+            </Txt>
+          </Card>
+        </FadeIn>
+      </Screen>
 
-              <View style={styles.buttonRow}>
-                <TouchableOpacity 
-                  style={[styles.button, styles.cancelButton]} 
-                  onPress={() => navigation.goBack()}
-                >
-                  <Text style={[styles.buttonText, styles.cancelButtonText]}>Cancel</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.button, styles.saveButton]} 
-                  onPress={saveProfile}
-                >
-                  <Text style={[styles.buttonText, styles.saveButtonText]}>Save</Text>
-                </TouchableOpacity>
-              </View>
-      </ScrollView>
+      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
+        <View style={styles.barSide}>
+          <Button title="Cancel" variant="ghost" onPress={() => navigation.goBack()} />
+        </View>
+        <View style={styles.flex}>
+          <Button title="Save" onPress={handleSave} loading={saving} size="lg" />
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
 
+// Kit TextField with the unit tucked in on the right (ref reaches the input).
+function UnitField({ unit, style, ...rest }) {
+  const { c } = useAppTheme();
+  return (
+    <View style={[{ justifyContent: 'center' }, style]}>
+      <TextField {...rest} inputStyle={{ paddingRight: space.xxl }} />
+      <View pointerEvents="none" style={{ position: 'absolute', right: space.lg, top: 0, bottom: 0, justifyContent: 'center' }}>
+        <Txt variant="small" color={c.muted}>{unit}</Txt>
+      </View>
     </View>
   );
 }
+
+// A selectable list row with a check when chosen.
+function ChoiceRow({ title, subtitle, selected, onPress }) {
+  const { c } = useAppTheme();
+  return (
+    <Tap
+      onPress={onPress}
+      scaleTo={0.985}
+      accessibilityRole="radio"
+      accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
+      accessibilityState={{ selected: !!selected, checked: !!selected }}
+    >
+      <Row
+        style={{ paddingHorizontal: space.lg, minHeight: 60 }}
+        title={title}
+        subtitle={subtitle}
+        trailing={
+          <Ionicons
+            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={24}
+            color={selected ? c.ink : c.faint}
+          />
+        }
+      />
+    </Tap>
+  );
+}
+
+const makeStyles = (c) => ({
+  root: { flex: 1, backgroundColor: c.bg },
+  content: { gap: space.xl, paddingTop: space.sm, paddingBottom: space.xxl },
+  flex: { flex: 1 },
+  group: { gap: space.sm },
+  overline: { paddingHorizontal: space.xs },
+  cardBody: { gap: space.lg },
+  field: { gap: space.sm },
+  fieldHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
+  label: { fontFamily: fonts.semibold },
+  unitSwitch: { width: 132 },
+  pair: { flexDirection: 'row', gap: space.sm },
+  plainRow: { paddingVertical: 0 },
+  tabular: { fontVariant: ['tabular-nums'] },
+  listDivider: { marginLeft: space.lg },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  targetsCard: { gap: space.lg },
+  dim: { opacity: 0.72 },
+  caloriesRow: { gap: space.xs },
+  macroRow: { flexDirection: 'row', gap: space.lg },
+  macroItem: { flex: 1, gap: 2 },
+  macroValue: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  macroDot: { width: 8, height: 8, borderRadius: 4 },
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    backgroundColor: c.bg,
+    borderTopWidth: 1,
+    borderTopColor: c.hairline,
+  },
+  barSide: { minWidth: 96 },
+});
