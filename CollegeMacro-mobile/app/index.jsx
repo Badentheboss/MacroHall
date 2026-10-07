@@ -34,7 +34,7 @@ export default function Home({ navigation }) {
             <Text style={currentStyles.highlight}>Your Campus Food Diary</Text>
           </Text>
           <Text style={[currentStyles.description, currentStyles.boldText]}>
-            Record your meals at any Michigan dining hall, track your dietary needs, and achieve your goals—all in one place.
+            Record your meals at your campus dining halls, track your macros, and see where your friends are eating—all in one place.
           </Text>
         </View>
 

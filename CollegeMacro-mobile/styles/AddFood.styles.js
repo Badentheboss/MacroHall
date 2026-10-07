@@ -167,6 +167,48 @@ export const FoodListStyles = (isDarkMode) => StyleSheet.create({
       fontWeight: 'bold',
       marginTop: 4,
     },
+    emptyMenu: {
+      alignItems: 'center',
+      paddingVertical: 40,
+      paddingHorizontal: 24,
+    },
+    emptyMenuTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginTop: 12,
+      color: isDarkMode ? '#E0E0E0' : '#32745f',
+    },
+    emptyMenuText: {
+      fontSize: 14,
+      textAlign: 'center',
+      marginTop: 8,
+      lineHeight: 20,
+      color: isDarkMode ? '#AAA' : '#666',
+    },
+    emptyMenuButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 18,
+      backgroundColor: '#32745f',
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+    },
+    emptyMenuButtonText: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    estimateLabel: {
+      backgroundColor: isDarkMode ? '#2A2A2A' : '#F1F3F5',
+      borderColor: isDarkMode ? '#555' : '#B0B8BF',
+      borderWidth: 1,
+    },
+    estimateLabelText: {
+      color: isDarkMode ? '#BBB' : '#5F6B75',
+    },
     labelContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',

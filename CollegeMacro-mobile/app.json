@@ -38,7 +38,23 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MacroHall uses your location only when you tap Check in, to find which dining hall you're in. Your location is never stored, and friends only see the hall name.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "MacroHall uses the camera when you photograph a dining hall menu board to share it with your campus.",
+          "photosPermission": "MacroHall uses your photos when you attach a screenshot to a bug report.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

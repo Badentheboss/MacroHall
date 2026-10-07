@@ -13,7 +13,10 @@ import Dashboard from "./(tabs)/Dashboard";
 import Log from "./(tabs)/Log";
 import Profile from "./(tabs)/profile";
 import UserProfile from "./(tabs)/UserProfile";
+import Friends from "./(tabs)/Friends";
+import Ask from "./(tabs)/Ask";
 import DietaryPreferences from "./DietaryPreferences";
+import Conversation from "./Conversation";
 
 import { RootStackParamList } from "../types";
 import { ThemeProvider } from "../context/ThemeContext";
@@ -119,6 +122,28 @@ function TabNavigator({
           ),
         }}
       />
+
+      <Tab.Screen
+        name="Friends"
+        component={Friends}
+        options={{
+          headerTitle: "Friends",
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="people" size={size} color={color} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Ask"
+        component={Ask}
+        options={{
+          headerTitle: "Ask MacroHall",
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="auto-awesome" size={size} color={color} />
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -145,6 +170,16 @@ export default function Layout() {
           options={{
             headerShown: false,
             headerLeft: () => null,
+          }}
+        />
+
+        <Stack.Screen
+          name="Conversation"
+          component={Conversation}
+          options={{
+            headerShown: true,
+            headerBackTitle: "Friends",
+            headerTintColor: "#32745f",
           }}
         />
 

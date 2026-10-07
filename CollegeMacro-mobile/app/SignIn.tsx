@@ -16,6 +16,8 @@ import { RootStackParamList } from "../types"; // Import types
 import { supabase } from "../utils/config";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from '../context/ThemeContext';
+import { ensureUserProfile } from "../utils/profile";
+import { normalizeEmail } from "../utils/schools";
 
 type SignInScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -34,28 +36,61 @@ export default function SignIn({ navigation }: Props) {
   const [resetModalVisible, setResetModalVisible] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [verifyVisible, setVerifyVisible] = useState(false);
+  const [code, setCode] = useState("");
   const passwordInputRef = useRef<TextInput>(null);
 
-  const handleSignIn = async () => {
-    setLoading(true);
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-
-    if (error) {
-      Alert.alert("Sign-In Error", error.message);
-      setLoading(false);
-      return;
+  const enterApp = async () => {
+    try {
+      // Accounts verified after sign-up get their profile row on first sign-in.
+      await ensureUserProfile();
+    } catch (error) {
+      console.error("Error creating profile:", error);
     }
-
     navigation.reset({
       index: 0,
       routes: [{ name: 'Main' }],
     });
+  };
 
+  const handleSignIn = async () => {
+    setLoading(true);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: normalizeEmail(email),
+      password,
+    });
+
+    if (error) {
+      setLoading(false);
+      if (/not confirmed/i.test(error.message)) {
+        await supabase.auth.resend({ type: "signup", email: normalizeEmail(email) });
+        setCode("");
+        setVerifyVisible(true);
+        return;
+      }
+      Alert.alert("Sign-In Error", error.message);
+      return;
+    }
+
+    await enterApp();
     setLoading(false);
+  };
+
+  const handleVerify = async () => {
+    setLoading(true);
+    const { error } = await supabase.auth.verifyOtp({
+      email: normalizeEmail(email),
+      token: code.trim(),
+      type: "email",
+    });
+    setLoading(false);
+    if (error) {
+      Alert.alert("That code didn't work", error.message);
+      return;
+    }
+    setVerifyVisible(false);
+    await enterApp();
   };
 
   const handlePasswordReset = async () => {
@@ -181,6 +216,12 @@ export default function SignIn({ navigation }: Props) {
       color: isDarkMode ? '#E0E0E0' : "#32745f",
       marginBottom: 20,
     },
+    modalText: {
+      fontSize: 15,
+      color: isDarkMode ? '#D3D3D3' : "#555",
+      textAlign: "center",
+      marginBottom: 16,
+    },
     cancelButton: {
       backgroundColor: 'transparent',
       paddingVertical: 16,
@@ -225,7 +266,7 @@ export default function SignIn({ navigation }: Props) {
 
       <TextInput
         style={styles.input}
-        placeholder="Email"
+        placeholder="School email (.edu)"
         value={email}
         onChangeText={setEmail}
         keyboardType="email-address"
@@ -277,6 +318,43 @@ export default function SignIn({ navigation }: Props) {
       <TouchableOpacity onPress={() => setResetModalVisible(true)} disabled={loading}>
         <Text style={styles.linkText}>Forgot your password? Reset it</Text>
       </TouchableOpacity>
+
+      {/* Email verification for accounts that never entered their sign-up code */}
+      <Modal
+        transparent={true}
+        visible={verifyVisible}
+        onRequestClose={() => setVerifyVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Verify your email</Text>
+            <Text style={styles.modalText}>
+              We sent a new code to {normalizeEmail(email)}.
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Code"
+              value={code}
+              onChangeText={(text) => setCode(text.replace(/[^0-9]/g, ""))}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              maxLength={10}
+              placeholderTextColor="#888"
+              editable={!loading}
+            />
+            <TouchableOpacity style={styles.button} onPress={handleVerify} disabled={loading}>
+              <Text style={styles.buttonText}>{loading ? "Verifying..." : "Verify"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.cancelButton]}
+              onPress={() => setVerifyVisible(false)}
+              disabled={loading}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Reset Password Modal */}
       <Modal

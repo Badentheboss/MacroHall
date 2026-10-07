@@ -23,6 +23,18 @@ import { useTheme } from '../../context/ThemeContext.jsx';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { formatNutrientDisplay } from "../../utils/nutrients";
+import * as ImagePicker from 'expo-image-picker';
+import { fetchHalls, fetchMySchool, todayInTimezone } from "../../utils/schools";
+import { postToBackend } from "../../utils/api";
+
+const ESTIMATED_SOURCES = new Set(['ai_estimated', 'crowdsourced']);
+const MEAL_ORDER = [
+  { label: "Breakfast", value: "breakfast" },
+  { label: "Brunch", value: "brunch" },
+  { label: "Lunch", value: "lunch" },
+  { label: "Dinner", value: "dinner" },
+  { label: "Late Night", value: "late night" },
+];
 
 const POPUP_VISIBLE_DURATION = 1500;
 const POPUP_HIDE_DURATION = 200;
@@ -59,19 +71,11 @@ const SORT_OPTIONS = [
   },
 ];
 
-export function HeaderSelector({ selectedDiningHall, setSelectedDiningHall, selectedMealTime, setSelectedMealTime, diningOpen, setDiningOpen, mealOpen, setMealOpen, dismissSearch }) {
+export function HeaderSelector({ halls, menuDate, selectedDiningHall, setSelectedDiningHall, selectedMealTime, setSelectedMealTime, diningOpen, setDiningOpen, mealOpen, setMealOpen, dismissSearch }) {
   const { isDarkMode } = useTheme();
   const [mealItems, setMealItems] = useState([]);
-  
-  const [diningItems] = useState([
-    { label: "Bursley", value: "Bursley" },
-    { label: "Markley", value: "Markley" },
-    { label: "North Quad", value: "North Quad" },
-    { label: "South Quad", value: "South Quad" },
-    { label: "East Quad", value: "East Quad" },
-    { label: "Mosher-Jordan", value: "Mosher-Jordan" },
-    { label: "Twigs at Oxford", value: "Twigs at Oxford" },
-  ]);
+
+  const diningItems = (halls || []).map((hall) => ({ label: hall.name, value: hall.slug }));
 
   const styles = HeaderSelectorStyles(isDarkMode);
 
@@ -120,30 +124,26 @@ export function HeaderSelector({ selectedDiningHall, setSelectedDiningHall, sele
   useEffect(() => {
     const fetchAvailableMealTimes = async () => {
       try {
-        // Get all food items for the selected dining hall
+        const hall = (halls || []).find((h) => h.slug === selectedDiningHall);
+        if (!hall || !menuDate) {
+          setMealItems([]);
+          return;
+        }
+
+        // Which meals today's menu at this hall covers
         const { data, error } = await supabase
-          .from(selectedDiningHall)
-          .select('is_breakfast, is_lunch, is_dinner, is_brunch');
+          .from('menu_items_flat')
+          .select('meals')
+          .eq('hall_id', hall.id)
+          .eq('menu_date', menuDate);
 
         if (error) {
           console.error("Error fetching meal times:", error);
           return;
         }
 
-        // Check which meal times have at least one food item
-        const availableMeals = {
-          breakfast: data.some(item => item.is_breakfast),
-          lunch: data.some(item => item.is_lunch),
-          dinner: data.some(item => item.is_dinner),
-          brunch: data.some(item => item.is_brunch)
-        };
-
-        // Create dropdown items in specific order
-        const newMealItems = [];
-        if (availableMeals.breakfast) newMealItems.push({ label: "Breakfast", value: "breakfast" });
-        if (availableMeals.brunch) newMealItems.push({ label: "Brunch", value: "brunch" });
-        if (availableMeals.lunch) newMealItems.push({ label: "Lunch", value: "lunch" });
-        if (availableMeals.dinner) newMealItems.push({ label: "Dinner", value: "dinner" });
+        const served = new Set(data.flatMap((item) => item.meals || []));
+        const newMealItems = MEAL_ORDER.filter((meal) => served.has(meal.value));
 
         setMealItems(newMealItems);
         
@@ -166,7 +166,7 @@ export function HeaderSelector({ selectedDiningHall, setSelectedDiningHall, sele
     };
 
     fetchAvailableMealTimes();
-  }, [selectedDiningHall]);
+  }, [selectedDiningHall, halls, menuDate]);
 
   return (
     <View style={styles.header}>
@@ -264,7 +264,11 @@ export default function FoodList() {
 
   const [diningOpen, setDiningOpen] = useState(false);
   const [mealOpen, setMealOpen] = useState(false);
-  const [selectedDiningHall, setSelectedDiningHall] = useState("Bursley");
+  const [school, setSchool] = useState(null);
+  const [halls, setHalls] = useState([]);
+  const [menuDate, setMenuDate] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [selectedDiningHall, setSelectedDiningHall] = useState(null);
   const [foodItems, setFoodItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -414,7 +418,7 @@ export default function FoodList() {
     fetchFoodItems(selectedDiningHall);
     fetchUserDailyValues();
     fetchUserPreferences();
-  }, [selectedDiningHall, selectedMealTime]);
+  }, [selectedDiningHall, selectedMealTime, halls, menuDate]);
 
   useEffect(() => {
     return () => {
@@ -428,29 +432,33 @@ export default function FoodList() {
     };
   }, []);
 
+  // Load the student's school and its dining halls, then reopen the hall they
+  // used last (older accounts stored the hall's display name, e.g. "Bursley").
   useEffect(() => {
-    const loadLastDiningHall = async () => {
+    const loadSchoolAndHalls = async () => {
       try {
+        const mySchool = await fetchMySchool();
+        if (!mySchool) return;
+        const schoolHalls = await fetchHalls(mySchool.id);
+        setSchool(mySchool);
+        setMenuDate(todayInTimezone(mySchool.timezone));
+        setHalls(schoolHalls);
+
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data, error } = await supabase
-          .from('users')
-          .select('last_dining_hall')
-          .eq('id', user.id)
-          .single();
-
-        if (error) throw error;
-        
-        if (data?.last_dining_hall) {
-          setSelectedDiningHall(data.last_dining_hall);
-        }
+        const { data } = user
+          ? await supabase.from('users').select('last_dining_hall').eq('id', user.id).single()
+          : { data: null };
+        const last = (data?.last_dining_hall || '').toLowerCase();
+        const match = schoolHalls.find(
+          (hall) => hall.slug === last || hall.name.toLowerCase() === last
+        );
+        setSelectedDiningHall((match || schoolHalls[0])?.slug ?? null);
       } catch (error) {
-        console.error('Error loading last dining hall:', error);
+        console.error('Error loading dining halls:', error);
       }
     };
 
-    loadLastDiningHall();
+    loadSchoolAndHalls();
   }, []);
 
   useEffect(() => {
@@ -475,13 +483,22 @@ export default function FoodList() {
     }
   }, [selectedDiningHall]);
 
-  const fetchFoodItems = async (diningHall) => {
+  const fetchFoodItems = async (hallSlug) => {
+    const hall = halls.find((h) => h.slug === hallSlug);
+    if (!hall || !menuDate) {
+      setFoodItems([]);
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from(diningHall)
-        .select("*")  // Select all fields to get the meal time booleans
-        .eq(`is_${selectedMealTime}`, true);
+        .from('menu_items_flat')
+        .select('id, name, subheader, meals, allergens, traits, nutrition_facts, nutrition_source')
+        .eq('hall_id', hall.id)
+        .eq('menu_date', menuDate)
+        .contains('meals', [selectedMealTime])
+        .order('id');
 
       if (error) {
         console.error("Error fetching food data:", error);
@@ -656,10 +673,9 @@ export default function FoodList() {
 
   const filterFoodByMealTime = (foods) => {
     // First filter by meal time
-    const filteredFoods = foods.filter(food => {
-      const mealTimeField = `is_${selectedMealTime}`;
-      return food[mealTimeField] === true;
-    });
+    const filteredFoods = foods.filter(food =>
+      (food.meals || []).includes(selectedMealTime) || food[`is_${selectedMealTime}`] === true
+    );
 
     // Then group by subheader
     const groupedFoods = filteredFoods.reduce((acc, food) => {
@@ -731,10 +747,45 @@ export default function FoodList() {
       setSelectedMealTime(currentMealTime);
       
       fetchUserPreferences();
+      if (school) {
+        // Roll over to the new day's menu if the app stayed open past midnight
+        setMenuDate(todayInTimezone(school.timezone));
+      }
       fetchFoodItems(selectedDiningHall);
       return () => {};
-    }, [selectedDiningHall])
+    }, [selectedDiningHall, school, halls, menuDate])
   );
+
+  const selectedHall = halls.find((hall) => hall.slug === selectedDiningHall);
+
+  // No menu posted: a student photographs the menu board and the backend
+  // turns it into dishes (nutrition estimated) for everyone at the school.
+  const shareMenuPhoto = async () => {
+    if (!selectedHall) return;
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        showModernPopup("Camera access is needed to snap the menu", "info");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ base64: true, quality: 0.5 });
+      if (result.canceled || !result.assets?.[0]?.base64) return;
+
+      const asset = result.assets[0];
+      setUploadingPhoto(true);
+      const response = await postToBackend('/menus/photo', {
+        hallId: selectedHall.id,
+        imageBase64: asset.base64,
+        mediaType: asset.mimeType || 'image/jpeg',
+      });
+      showModernPopup(`Thanks! Added ${response.dishes} dishes to ${response.hall}`, "success");
+      fetchFoodItems(selectedDiningHall);
+    } catch (error) {
+      showModernPopup(error.message || "Couldn't read that photo", "error");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const hasActiveFilters =
     sortOption !== 'none' ||
@@ -764,10 +815,12 @@ export default function FoodList() {
           numberOfLines={1}
           adjustsFontSizeToFit
         >
-          {selectedDiningHall} {selectedMealTime?.charAt(0).toUpperCase() + selectedMealTime?.slice(1)} Menu
+          {selectedHall?.name || 'Dining Hall'} {selectedMealTime?.charAt(0).toUpperCase() + selectedMealTime?.slice(1)} Menu
         </Text>
         
         <HeaderSelector
+          halls={halls}
+          menuDate={menuDate}
           selectedDiningHall={selectedDiningHall}
           setSelectedDiningHall={setSelectedDiningHall}
           selectedMealTime={selectedMealTime}
@@ -849,6 +902,25 @@ export default function FoodList() {
 
         {loading ? (
           <Text></Text>
+        ) : foodItems.length === 0 && selectedHall ? (
+          <View style={styles.emptyMenu}>
+            <MaterialIcons name="restaurant" size={40} color={isDarkMode ? '#888' : '#9BB8AC'} />
+            <Text style={styles.emptyMenuTitle}>No {selectedMealTime} menu posted for {selectedHall.name} yet</Text>
+            <Text style={styles.emptyMenuText}>
+              At the hall? Snap the menu board and we'll add today's dishes for everyone.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyMenuButton}
+              onPress={shareMenuPhoto}
+              disabled={uploadingPhoto}
+              accessibilityRole="button"
+            >
+              <MaterialIcons name="photo-camera" size={18} color="#fff" />
+              <Text style={styles.emptyMenuButtonText}>
+                {uploadingPhoto ? 'Reading menu...' : 'Snap the menu'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <FlatList
             data={getFilteredSections()}
@@ -891,6 +963,7 @@ export default function FoodList() {
                     )
                   );
 
+                  const isEstimate = ESTIMATED_SOURCES.has(foodItem.nutrition_source);
                   const isAdded = addedItems.includes(foodItem.name);
                   const dailyCalories = userDailyValues?.dailyCalories || 2000;
 
@@ -907,8 +980,13 @@ export default function FoodList() {
                         <Text style={styles.foodName}>{foodItem.name}</Text>
                         
                         {/* Only show labels if there are matches */}
-                        {(matchingAllergens.length > 0 || matchingPreferences.length > 0) && (
+                        {(matchingAllergens.length > 0 || matchingPreferences.length > 0 || isEstimate) && (
                           <View style={styles.labelContainer}>
+                            {isEstimate && (
+                              <View style={[styles.label, styles.estimateLabel]}>
+                                <Text style={[styles.labelText, styles.estimateLabelText]}>Estimated nutrition</Text>
+                              </View>
+                            )}
                             {matchingAllergens.map(allergen => (
                               <View key={allergen} style={[styles.label, styles.allergenLabel]}>
                                 <Text style={[styles.labelText, styles.allergenLabelText]}>

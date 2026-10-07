@@ -10,4 +10,7 @@ export type RootStackParamList = {
   DietaryPreferences: undefined;
   Settings: undefined;
   UserProfile: { firstTimeSetup?: boolean } | undefined;
+  Friends: undefined; // Tab screen
+  Ask: undefined; // Tab screen
+  Conversation: { friendId: string; friendName: string };
 };

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   ScrollView,
+  Modal,
 } from "react-native";
 import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { StackNavigationProp } from "@react-navigation/stack";
@@ -20,6 +21,24 @@ import { useNavigation } from "@react-navigation/native";
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import PrivacyPolicy from "../components/PrivacyPolicy";
+import SchoolPicker from "../components/SchoolPicker";
+import {
+  emailMatchesSchool,
+  fetchSchools,
+  isEduEmail,
+  joinWaitlist,
+  normalizeEmail,
+} from "../utils/schools";
+import { ensureUserProfile } from "../utils/profile";
+
+type School = {
+  id: number;
+  slug: string;
+  name: string;
+  short_name: string | null;
+  email_domains: string[];
+  status: "live" | "coming_soon";
+};
 
 type SignUpScreenNavigationProp = StackNavigationProp<RootStackParamList, "SignUp">;
 
@@ -39,8 +58,22 @@ export default function SignUp() {
   const [birthday, setBirthday] = useState("");
   const [birthdayDate, setBirthdayDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [schools, setSchools] = useState<School[]>([]);
+  const [school, setSchool] = useState<School | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [step, setStep] = useState<"form" | "verify">("form");
+  const [code, setCode] = useState("");
+  const [missingVisible, setMissingVisible] = useState(false);
+  const [missingSchoolName, setMissingSchoolName] = useState("");
+  const [missingEmail, setMissingEmail] = useState("");
 
   const { email, username, password, confirmPassword } = formData;
+
+  useEffect(() => {
+    fetchSchools()
+      .then(setSchools)
+      .catch(() => Alert.alert("Error", "Couldn't load the school list. Check your connection."));
+  }, []);
 
   const emailInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
@@ -53,7 +86,115 @@ export default function SignUp() {
     }));
   };
 
+  const offerWaitlist = (target: School) => {
+    Alert.alert(
+      `MacroHall isn't at ${target.short_name || target.name} yet`,
+      "Join the waitlist and we'll email you when your dining halls are live.",
+      [
+        { text: "Not now", style: "cancel" },
+        {
+          text: "Join waitlist",
+          onPress: () => {
+            if (!isEduEmail(email) || !emailMatchesSchool(email, target)) {
+              setMissingSchoolName(target.name);
+              setMissingEmail("");
+              setMissingVisible(true);
+              return;
+            }
+            joinWaitlist({ school: target, email })
+              .then(() => Alert.alert("You're on the list", `We'll email ${normalizeEmail(email)}.`))
+              .catch(() => Alert.alert("Error", "Couldn't join the waitlist. Try again."));
+          },
+        },
+      ]
+    );
+  };
+
+  const submitMissingSchool = async () => {
+    if (missingSchoolName.trim().length < 2) {
+      Alert.alert("Missing school", "Enter your school's name.");
+      return;
+    }
+    if (!isEduEmail(missingEmail)) {
+      Alert.alert("School email needed", "Use your .edu email so we can tell you when it's live.");
+      return;
+    }
+    try {
+      const listed = schools.find((s) => s.name === missingSchoolName.trim()) || null;
+      await joinWaitlist({ school: listed, schoolName: missingSchoolName.trim(), email: missingEmail });
+      setMissingVisible(false);
+      Alert.alert("Thanks!", "We'll email you when MacroHall launches at your school.");
+    } catch {
+      Alert.alert("Error", "Couldn't send your request. Try again.");
+    }
+  };
+
+  const finishSignUp = async () => {
+    await ensureUserProfile();
+    Alert.alert("Sign Up Successful", "Let's set up your profile.");
+    navigation.reset({
+      index: 1,
+      // Land on the main tab navigator, then immediately show the profile modal
+      routes: [
+        { name: 'Main' },
+        { name: 'UserProfile', params: { firstTimeSetup: true } },
+      ],
+    });
+  };
+
+  const verifyCode = async () => {
+    if (code.trim().length < 6) {
+      Alert.alert("Enter the code", "Type the code from the email we sent you.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: normalizeEmail(email),
+        token: code.trim(),
+        type: "email",
+      });
+      if (error) {
+        Alert.alert("That code didn't work", error.message);
+        return;
+      }
+      await finishSignUp();
+    } catch (error) {
+      Alert.alert("Unexpected Error", "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendCode = async () => {
+    const { error } = await supabase.auth.resend({ type: "signup", email: normalizeEmail(email) });
+    Alert.alert(error ? "Couldn't resend" : "Code sent", error ? error.message : `Check ${normalizeEmail(email)}.`);
+  };
+
   const onSubmit = async () => {
+    if (!school) {
+      Alert.alert("Pick your school", "Choose the college you attend first.");
+      return;
+    }
+
+    if (school.status !== "live") {
+      offerWaitlist(school);
+      return;
+    }
+
+    if (!isEduEmail(email)) {
+      Alert.alert("School email required", "MacroHall is for students. Sign up with your .edu email.");
+      return;
+    }
+
+    if (!emailMatchesSchool(email, school)) {
+      Alert.alert(
+        "Email doesn't match your school",
+        `Use your @${school.email_domains[0]} email for ${school.name}.`
+      );
+      return;
+    }
+
     if (password.length < 6) {
       Alert.alert("Error", "Password should be at least 6 characters long.");
       return;
@@ -90,27 +231,24 @@ export default function SignUp() {
     setLoading(true);
 
     try {
-      const { error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
+      // Profile details ride along as auth metadata so the profile row can be
+      // created once the email is verified, even if that happens later.
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: normalizeEmail(email),
         password: password,
+        options: {
+          data: { username: username.trim(), birthday, school_id: school.id },
+        },
       });
 
-      const { error: profileError } = await supabase
-        .from("users")
-        .insert({ username: username.trim(), email: email.trim(), birthday });
-
-      if (authError || profileError) {
-        Alert.alert("Error", authError?.message || profileError?.message || "Error signing up.");
+      if (authError) {
+        Alert.alert("Error", authError.message || "Error signing up.");
+      } else if (data.session) {
+        // Email confirmation is off in this Supabase project.
+        await finishSignUp();
       } else {
-        Alert.alert("Sign Up Successful", "Let's set up your profile.");
-        navigation.reset({
-          index: 1,
-          // Land on the main tab navigator, then immediately show the profile modal
-          routes: [
-            { name: 'Main' },
-            { name: 'UserProfile', params: { firstTimeSetup: true } },
-          ],
-        });
+        setCode("");
+        setStep("verify");
       }
     } catch (error) {
       Alert.alert("Unexpected Error", "Something went wrong. Please try again.");
@@ -207,6 +345,18 @@ export default function SignUp() {
     policySection: {
       marginTop: 32,
       marginBottom: 16,
+    },
+    helperText: {
+      fontSize: 16,
+      lineHeight: 22,
+      color: isDarkMode ? '#D3D3D3' : '#555',
+      marginBottom: 20,
+      textAlign: 'center',
+    },
+    codeInput: {
+      fontSize: 24,
+      letterSpacing: 8,
+      textAlign: 'center',
     },
     datePickerButton: {
       height: 55,
@@ -329,8 +479,51 @@ export default function SignUp() {
               color={isDarkMode ? '#E0E0E0' : '#32745f'} 
             />
           </TouchableOpacity>
-          <Text style={styles.title}>Sign Up</Text>
+          <Text style={styles.title}>{step === "verify" ? "Verify Email" : "Sign Up"}</Text>
         </View>
+
+        {step === "verify" ? (
+          <View>
+            <Text style={styles.helperText}>
+              We sent a code to {normalizeEmail(email)}. Enter it to confirm you're a student at {school?.short_name || school?.name}.
+            </Text>
+            <TextInput
+              style={[styles.input, styles.codeInput]}
+              placeholder="Code"
+              value={code}
+              onChangeText={(text) => setCode(text.replace(/[^0-9]/g, ""))}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              autoComplete="one-time-code"
+              maxLength={10}
+              placeholderTextColor="#888"
+              editable={!loading}
+            />
+            <TouchableOpacity style={styles.button} onPress={verifyCode} disabled={loading}>
+              <Text style={styles.buttonText}>{loading ? "Verifying..." : "Verify"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={resendCode} disabled={loading}>
+              <Text style={styles.linkText}>Didn't get it? Resend code</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setStep("form")} disabled={loading}>
+              <Text style={styles.linkText}>Use a different email</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+        <>
+        <TouchableOpacity
+          style={styles.datePickerButton}
+          onPress={() => setPickerVisible(true)}
+          disabled={loading}
+          activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel="Pick your school"
+        >
+          <Text style={[styles.datePickerText, !school && styles.datePickerPlaceholderText]} numberOfLines={1}>
+            {school ? school.name : "Select Your School"}
+          </Text>
+          <MaterialIcons name="school" size={22} color={isDarkMode ? '#E0E0E0' : '#32745f'} />
+        </TouchableOpacity>
 
         <TextInput
           style={styles.input}
@@ -346,7 +539,7 @@ export default function SignUp() {
         <TextInput
           ref={emailInputRef}
           style={styles.input}
-          placeholder="Email"
+          placeholder={school?.email_domains?.length ? `you@${school.email_domains[0]}` : "School email (.edu)"}
           value={email}
           onChangeText={(text) => onChange("email", text)}
           keyboardType="email-address"
@@ -428,9 +621,68 @@ export default function SignUp() {
         <TouchableOpacity onPress={() => navigation.navigate("SignIn")}>
           <Text style={styles.linkText}>Already have an account? Sign In</Text>
         </TouchableOpacity>
+        </>
+        )}
 
         <PrivacyPolicy isDarkMode={isDarkMode} style={styles.policySection} />
       </ScrollView>
+
+      <SchoolPicker
+        visible={pickerVisible}
+        schools={schools}
+        isDarkMode={isDarkMode}
+        onClose={() => setPickerVisible(false)}
+        onSelect={(selected: School) => {
+          setPickerVisible(false);
+          if (selected.status === "live") {
+            setSchool(selected);
+          } else {
+            // iOS drops alerts raised while a modal is still animating closed.
+            setTimeout(() => offerWaitlist(selected), 450);
+          }
+        }}
+        onRequestMissing={() => {
+          setPickerVisible(false);
+          setMissingSchoolName("");
+          setMissingEmail(email);
+          setTimeout(() => setMissingVisible(true), 450);
+        }}
+      />
+
+      <Modal
+        transparent
+        visible={missingVisible}
+        animationType="fade"
+        onRequestClose={() => setMissingVisible(false)}
+      >
+        <View style={styles.datePickerModal}>
+          <View style={styles.datePickerContainer}>
+            <Text style={styles.datePickerTitle}>Bring MacroHall to your school</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="School name"
+              value={missingSchoolName}
+              onChangeText={setMissingSchoolName}
+              placeholderTextColor="#888"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Your .edu email"
+              value={missingEmail}
+              onChangeText={setMissingEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              placeholderTextColor="#888"
+            />
+            <TouchableOpacity style={styles.button} onPress={submitMissingSchool}>
+              <Text style={styles.buttonText}>Join waitlist</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setMissingVisible(false)}>
+              <Text style={styles.linkText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {Platform.OS === 'ios' && showDatePicker && (
         <View style={styles.datePickerModal}>
