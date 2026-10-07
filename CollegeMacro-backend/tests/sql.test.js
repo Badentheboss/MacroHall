@@ -15,6 +15,7 @@ const SHIM = read('tests', 'sql', 'supabase-shim.sql');
 const SCHEMA = read('src', 'db', 'schema.sql');
 const MIGRATION = read('src', 'db', 'migrations', '002_multi_school_social.sql');
 const PROFILES = read('src', 'db', 'migrations', '003_profiles.sql');
+const GYMS = read('src', 'db', 'migrations', '004_gyms_favorites.sql');
 const SEED = read('src', 'db', 'seed', 'schools.sql');
 
 const LEGACY = '00000000-0000-0000-0000-00000000000a';
@@ -69,8 +70,9 @@ test.before(async () => {
 
   await db.exec(SCHEMA);
   await db.exec(MIGRATION);
-  await db.exec(SEED);
   await db.exec(PROFILES);
+  await db.exec(GYMS);
+  await db.exec(SEED);
 });
 
 test.after(async () => {
@@ -79,8 +81,9 @@ test.after(async () => {
 
 test('migration and seed are idempotent and the seed file is current', async () => {
   await db.exec(MIGRATION);
-  await db.exec(SEED);
   await db.exec(PROFILES);
+  await db.exec(GYMS);
+  await db.exec(SEED);
   assert.equal(SEED, buildSeedSql(), 'run `npm run db:seed-sql` after editing the catalog');
   assert.equal(read('src', 'db', 'setup.sql'), buildSetupSql(), 'run `npm run db:setup-sql` after editing any SQL');
 
@@ -201,7 +204,7 @@ test('presence: friends see your hall, nobody stores coordinates, ghost mode hid
   assert.deepEqual(near.rows, [{ hall_name: 'Bursley' }]);
 
   const columns = (await db.query(`select column_name from information_schema.columns where table_name = 'presence'`)).rows.map((r) => r.column_name);
-  assert.deepEqual(columns.sort(), ['checked_in_at', 'expires_at', 'hall_id', 'user_id']);
+  assert.deepEqual(columns.sort(), ['checked_in_at', 'expires_at', 'gym_id', 'hall_id', 'user_id'], 'no coordinates');
 
   const seenByBlake = await as(BLAKE, `select display_name, hall_name from public.get_friends_presence()`);
   assert.deepEqual(seenByBlake.rows, [{ display_name: 'Alex', hall_name: 'Bursley' }]);
@@ -366,4 +369,104 @@ test('profiles: logs become history, visibility is enforced, profiles are editab
   // Clearing the log removes today's entry but keeps history.
   await as(EVE, `update public.users set log = '[]' where id = auth.uid()`);
   assert.equal((await as(EVE, `select count(*)::int as n from public.daily_logs`)).rows[0].n, 3);
+});
+
+const HANK = '00000000-0000-0000-0000-000000000008'; // umich
+const IVY = '00000000-0000-0000-0000-000000000009'; // umich, Hank's friend
+const JO = '00000000-0000-0000-0000-00000000000b';
+const KAI = '00000000-0000-0000-0000-00000000000c';
+const GYM = { lat: 42.2752, lng: -83.736 }; // test coordinates only
+
+test('gyms: opt-in tracking, visits, friends at the gym, crowd threshold', async () => {
+  for (const [id, email, name] of [[HANK, 'hank@umich.edu', 'Hank'], [IVY, 'ivy@umich.edu', 'Ivy'], [JO, 'jo@umich.edu', 'Jo'], [KAI, 'kai@umich.edu', 'Kai']]) {
+    await createStudent(id, email, name, 'umich');
+  }
+  await as(HANK, `select public.send_friend_request($1)`, [IVY]);
+  await as(IVY, `select public.respond_friend_request($1, true)`, [HANK]);
+  await db.query(`update public.gym_facilities set latitude = $1, longitude = $2 where slug = 'ccrb'`, [GYM.lat, GYM.lng]);
+  const gymId = (await db.query(`select id from public.gym_facilities where slug = 'ccrb'`)).rows[0].id;
+
+  // Gym location is off by default: the gym is not detected or recorded.
+  assert.deepEqual((await as(HANK, `select * from public.check_in_place($1, $2, 10)`, [GYM.lat, GYM.lng])).rows, []);
+  await as(HANK, `select public.check_in_gym($1)`, [gymId]);
+  assert.equal((await db.query(`select count(*)::int as n from public.gym_sessions where user_id = $1`, [HANK])).rows[0].n, 0);
+
+  await as(HANK, `select public.set_location_sharing(true, true)`);
+  const atGym = await as(HANK, `select place_type, place_name from public.check_in_place($1, $2, 10)`, [GYM.lat + 0.0002, GYM.lng]);
+  assert.deepEqual(atGym.rows, [{ place_type: 'gym', place_name: 'Central Campus Recreation Building' }]);
+  await as(HANK, `select * from public.check_in_place($1, $2, 10)`, [GYM.lat, GYM.lng]);
+  assert.equal((await db.query(`select count(*)::int as n from public.gym_sessions where user_id = $1 and ended_at is null`, [HANK])).rows[0].n, 1, 'same visit continues');
+
+  const ivySees = await as(IVY, `select display_name, gym_name, hall_name from public.get_friends_presence()`);
+  assert.deepEqual(ivySees.rows, [{ display_name: 'Hank', gym_name: 'Central Campus Recreation Building', hall_name: null }]);
+
+  // Crowd counts appear only from 3 people; friends are listed by name.
+  let overview = (await as(IVY, `select * from public.gym_overview_safe() where gym_id = $1`, [gymId])).rows[0];
+  assert.equal(overview.students_here, null);
+  assert.deepEqual(overview.friends_here, ['Hank']);
+  for (const id of [JO, KAI]) {
+    await as(id, `select public.set_location_sharing(true, true)`);
+    await as(id, `select public.check_in_gym($1)`, [gymId]);
+  }
+  overview = (await as(IVY, `select * from public.gym_overview_safe() where gym_id = $1`, [gymId])).rows[0];
+  assert.equal(overview.students_here, 3);
+  assert.deepEqual(overview.friends_here, ['Hank'], 'non-friends are counted, never named');
+
+  // Walking into a dining hall ends the gym visit.
+  const atHall = await as(HANK, `select place_type, place_name from public.check_in_place($1, $2, 10)`, [HALL.lat, HALL.lng]);
+  assert.deepEqual(atHall.rows, [{ place_type: 'hall', place_name: 'Bursley' }]);
+  assert.equal((await db.query(`select count(*)::int as n from public.gym_sessions where user_id = $1 and ended_at is null`, [HANK])).rows[0].n, 0);
+
+  // Turning gym location off hides and stops tracking; dining stays on.
+  await as(JO, `select public.set_location_sharing(true, false)`);
+  assert.deepEqual((await as(JO, `select * from public.check_in_place($1, $2, 10)`, [GYM.lat, GYM.lng])).rows, []);
+  assert.equal((await db.query(`select count(*)::int as n from public.presence where user_id = $1`, [JO])).rows[0].n, 0);
+
+  // Geofence exit only leaves the matching place.
+  await as(KAI, `select public.leave_place('hall', $1)`, [gymId]);
+  assert.equal((await db.query(`select count(*)::int as n from public.presence where user_id = $1`, [KAI])).rows[0].n, 1);
+  await as(KAI, `select public.leave_place('gym', $1)`, [gymId]);
+  assert.equal((await db.query(`select count(*)::int as n from public.presence where user_id = $1`, [KAI])).rows[0].n, 0);
+
+  // Profile gym stats (friends can see; 10+ minute visits count as gym days).
+  await db.query(`delete from public.gym_sessions where user_id = $1`, [HANK]);
+  await db.query(
+    `insert into public.gym_sessions (user_id, gym_id, started_at, ended_at) values
+       ($1, $2, now() - interval '1 day', now() - interval '1 day' + interval '75 minutes'),
+       ($1, $2, now() - interval '3 days', now() - interval '3 days' + interval '45 minutes'),
+       ($1, $2, now() - interval '4 days', now() - interval '4 days' + interval '5 minutes'),
+       ($1, $2, now() - interval '20 days', now() - interval '20 days' + interval '60 minutes')`,
+    [HANK, gymId]
+  );
+  await as(HANK, `select public.check_in_gym($1)`, [gymId]);
+  const gymStats = (await as(IVY, `select public.get_profile($1) as p`, [HANK])).rows[0].p.gym;
+  assert.equal(gymStats.at_gym_now, 'Central Campus Recreation Building');
+  assert.equal(gymStats.gym_days_7, 2);
+  assert.equal(gymStats.gym_days_30, 3);
+  assert.equal(gymStats.gym_minutes_7, 125);
+  assert.equal((await as(IVY, `select public.get_profile($1) as p`, [JO])).rows[0].p.gym, undefined, 'not friends: no log, no gym');
+  await as(HANK, `select public.set_location_sharing(true, false)`);
+  assert.equal((await as(IVY, `select public.get_profile($1) as p`, [HANK])).rows[0].p.gym, null, 'gym location off hides gym stats');
+});
+
+test('favorite dishes: private hearts matched to today\'s menus', async () => {
+  const hall = (await db.query(`select id from public.dining_halls where slug = 'bursley'`)).rows[0].id;
+  const item = (
+    await asService(
+      `insert into public.menu_items (hall_id, menu_date, name, subheader) values ($1, public.user_today($2), 'Grilled Chicken', 'Grill') returning id`,
+      [hall, HANK]
+    )
+  ).rows[0].id;
+  await asService(`insert into public.menu_item_meals (menu_item_id, meal) values ($1, 'dinner')`, [item]);
+  await asService(`insert into public.menu_item_nutrition (menu_item_id, nutrient_key, nutrient_value) values ($1, 'calories', '210'), ($1, 'protein', '40')`, [item]);
+
+  await as(HANK, `insert into public.favorite_dishes (dish_name) values ('  grilled CHICKEN '), ('Pad Thai')`);
+  await rejects(as(HANK, `insert into public.favorite_dishes (dish_name) values ('Grilled Chicken')`), /duplicate|favorite_dishes_pkey/);
+
+  const onMenu = await as(HANK, `select dish_name, hall_name, meals, calories::float, protein::float from public.favorites_on_menu()`);
+  assert.deepEqual(onMenu.rows, [{ dish_name: 'Grilled Chicken', hall_name: 'Bursley', meals: ['dinner'], calories: 210, protein: 40 }]);
+
+  assert.deepEqual((await as(IVY, `select * from public.favorite_dishes`)).rows, [], 'hearts are private rows');
+  const profile = (await as(IVY, `select public.get_profile($1) as p`, [HANK])).rows[0].p;
+  assert.deepEqual([...profile.favorites].sort(), ['  grilled CHICKEN ', 'Pad Thai'].sort());
 });

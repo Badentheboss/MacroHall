@@ -33,7 +33,7 @@ async function loadChatContext(supabase, userId) {
   const menuItems = await fetchAll(() =>
     supabase
       .from('menu_items_flat')
-      .select('hall_name, menu_date, name, subheader, meals, allergens, traits, nutrition_facts, nutrition_source')
+      .select('id, hall_id, hall_name, menu_date, name, subheader, meals, allergens, traits, nutrition_facts, nutrition_source')
       .eq('school_id', school.id)
       .in('menu_date', [dates.today, dates.tomorrow])
       .order('id')

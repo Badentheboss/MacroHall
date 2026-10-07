@@ -44,6 +44,28 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'build_plate',
+    description:
+      "Builds the plate that best hits a macro target from real dining hall menus: picks dishes and servings (up to 2 each) per hall and ranks halls. With protein_g and calories null it targets what the student has left today. Use it for questions like \"I have 60g protein left, what should I eat at South Quad?\". Saved allergens are excluded unless respect_my_allergens is false.",
+    strict: true,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['day', 'meal', 'hall', 'protein_g', 'calories', 'carbs_g', 'fat_g', 'max_items', 'respect_my_allergens'],
+      properties: {
+        day: { type: 'string', enum: ['today', 'tomorrow'] },
+        meal: nullable({ type: 'string', enum: MEALS }),
+        hall: nullable({ type: 'string', description: 'Limit to one dining hall (name or part of it)' }),
+        protein_g: nullable({ type: 'number', description: 'Protein target for this plate; null = remaining today' }),
+        calories: nullable({ type: 'number', description: 'Calorie target for this plate; null = remaining today' }),
+        carbs_g: nullable({ type: 'number' }),
+        fat_g: nullable({ type: 'number' }),
+        max_items: nullable({ type: 'integer', description: 'Most distinct dishes on the plate (default 4)' }),
+        respect_my_allergens: { type: 'boolean' },
+      },
+    },
+  },
+  {
     name: 'get_my_day',
     description:
       "Returns the student's daily calorie and macro targets, what they have logged today, what remains, and their saved allergens and dietary preferences.",
@@ -176,8 +198,31 @@ function getMyDay(ctx) {
   };
 }
 
+// Compact plates for the model: names, servings and macros only.
+function buildPlateTool(ctx, input) {
+  const { planPlates } = require('../plate/planForUser');
+  const result = planPlates(ctx, input);
+  return {
+    ...result,
+    plates: result.plates.slice(0, 3).map((plate) => ({
+      hall: plate.hall,
+      totals: plate.totals,
+      items: plate.items.map((item) => ({
+        name: item.name,
+        station: item.subheader || null,
+        servings: item.servings,
+        calories_each: macros(item).calories,
+        protein_each_g: macros(item).protein_g,
+        nutrition_is_estimate: item.nutrition_source === 'ai_estimated' || item.nutrition_source === 'crowdsourced',
+      })),
+    })),
+  };
+}
+
 function runTool(name, input, ctx) {
   switch (name) {
+    case 'build_plate':
+      return buildPlateTool(ctx, input);
     case 'list_dining_halls':
       return listDiningHalls(ctx, input);
     case 'find_foods':

@@ -9,6 +9,8 @@ const { answer } = require('./chat/chat');
 const { extractMenu } = require('./ai/menuExtractor');
 const { replaceHallMenu } = require('./db/supabaseRepository');
 const { Anthropic } = require('./ai/claude');
+const { planPlates } = require('./plate/planForUser');
+const { liveOccupancy } = require('./gyms/occupancy');
 
 const AI_DAILY_LIMIT = Number(process.env.AI_DAILY_LIMIT || 40);
 const PHOTO_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -23,7 +25,7 @@ async function consumeQuota(supabase, userId) {
   return data === true;
 }
 
-function createApp({ getSupabase = defaultSupabase, anthropic, extract = extractMenu } = {}) {
+function createApp({ getSupabase = defaultSupabase, anthropic, extract = extractMenu, occupancyFetch } = {}) {
   const app = express();
   const auth = requireUser(getSupabase);
 
@@ -97,6 +99,49 @@ function createApp({ getSupabase = defaultSupabase, anthropic, extract = extract
       }
       console.error('chat failed:', error);
       return res.status(500).json({ message: 'Something went wrong. Try again.' });
+    }
+  });
+
+  // "Hit my macros": best plate per dining hall for what the student has left
+  // today (or explicit targets). Deterministic, so no AI quota is used.
+  app.post('/plate', express.json({ limit: '16kb' }), auth, async (req, res) => {
+    try {
+      const ctx = await loadChatContext(getSupabase(), req.user.id);
+      const body = req.body || {};
+      const numberOrNull = (value) => (Number.isFinite(Number(value)) && value !== null && value !== '' ? Number(value) : null);
+      return res.json(
+        planPlates(ctx, {
+          day: body.day,
+          meal: body.meal || null,
+          hall: body.hall || null,
+          protein_g: numberOrNull(body.protein_g),
+          calories: numberOrNull(body.calories),
+          carbs_g: numberOrNull(body.carbs_g),
+          fat_g: numberOrNull(body.fat_g),
+          max_items: numberOrNull(body.max_items),
+          respect_my_allergens: body.respect_my_allergens !== false,
+        })
+      );
+    } catch (error) {
+      console.error('plate failed:', error);
+      return res.status(500).json({ message: 'Could not build a plate right now.' });
+    }
+  });
+
+  // Live rec-center occupancy for the student's school, where a feed exists.
+  app.get('/gyms/live', auth, async (req, res) => {
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from('users')
+        .select('schools(slug)')
+        .eq('id', req.user.id)
+        .single();
+      if (error) throw error;
+      return res.json(await liveOccupancy(data?.schools?.slug, occupancyFetch ? { fetchJson: occupancyFetch } : {}));
+    } catch (error) {
+      console.error('gym occupancy failed:', error);
+      return res.status(502).json({ message: 'Live gym counts are unavailable right now.' });
     }
   });
 

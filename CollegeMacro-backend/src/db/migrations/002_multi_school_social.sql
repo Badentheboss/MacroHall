@@ -521,8 +521,10 @@ end $$;
 
 -- Every accepted friend with the hall they are at, or null hall when they are
 -- not at one, are hiding, or their check-in expired. Hidden and absent look
--- identical on purpose.
-create or replace function public.get_friends_presence()
+-- identical on purpose. (Dropped first: migration 004 widens its return type,
+-- and re-running this file afterwards must still work.)
+drop function if exists public.get_friends_presence();
+create function public.get_friends_presence()
 returns table (friend_id uuid, display_name text, hall_id bigint, hall_name text, checked_in_at timestamptz)
 language sql stable security definer set search_path = public as $$
   with friends as (

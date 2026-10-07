@@ -10,6 +10,7 @@ const PARTS = [
   'schema.sql',
   'migrations/002_multi_school_social.sql',
   'migrations/003_profiles.sql',
+  'migrations/004_gyms_favorites.sql',
   'seed/schools.sql',
 ];
 

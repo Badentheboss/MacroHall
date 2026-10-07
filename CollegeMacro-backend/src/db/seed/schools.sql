@@ -69,3 +69,15 @@ on conflict (slug) do update set
   menu_platform = excluded.menu_platform,
   status = case when public.schools.status = 'live' then 'live' else excluded.status end,
   updated_at = now();
+
+-- Gyms (names only; coordinates are set per school and never overwritten here).
+insert into public.gym_facilities (school_id, slug, name)
+select s.id, v.slug, v.name
+from (values
+  ('umich', 'ccrb', 'Central Campus Recreation Building'),
+  ('umich', 'ncrb', 'North Campus Recreation Building'),
+  ('umich', 'imsb', 'Intramural Sports Building'),
+  ('purdue', 'corec', 'France A. Córdova Recreational Sports Center (CoRec)')
+) as v(school_slug, slug, name)
+join public.schools s on s.slug = v.school_slug
+on conflict (school_id, slug) do update set name = excluded.name;

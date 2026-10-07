@@ -100,6 +100,24 @@ const catalog = [
   school('oregon', 'University of Oregon', 'Oregon', ['uoregon.edu'], 'Eugene', 'OR', PT, 'unknown', false),
 ];
 
+// Rec centers students can check in at. Coordinates are set in the database
+// (see docs/EXPANSION_PLAN.md) so geofences can be tuned without a release.
+const gyms = {
+  umich: [
+    { slug: 'ccrb', name: 'Central Campus Recreation Building' },
+    { slug: 'ncrb', name: 'North Campus Recreation Building' },
+    { slug: 'imsb', name: 'Intramural Sports Building' },
+  ],
+  purdue: [{ slug: 'corec', name: 'France A. Córdova Recreational Sports Center (CoRec)' }],
+};
+
+// Live occupancy feeds. Connect2Concepts ("GoBoard") powers many rec centers'
+// "facility counts" widgets; the account key is public in that widget. Purdue's
+// is the one its RecWell site ships (used by the open-source purdue-mcp).
+const occupancy = {
+  purdue: { provider: 'connect2', accountKey: 'aedeaf92-036d-4848-980b-7eb5526ea40c' },
+};
+
 function getCatalogEntry(slug) {
   return catalog.find((entry) => entry.slug === slug);
 }
@@ -107,4 +125,6 @@ function getCatalogEntry(slug) {
 module.exports = {
   catalog,
   getCatalogEntry,
+  gyms,
+  occupancy,
 };
