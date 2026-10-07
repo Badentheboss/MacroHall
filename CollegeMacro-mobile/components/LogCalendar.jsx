@@ -8,7 +8,8 @@ const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const pad = (n) => String(n).padStart(2, '0');
 
 // month: 'YYYY-MM-01'. days: { 'YYYY-MM-DD': { calories, protein } }.
-// Logged days are filled ink, today is ringed, the selected day is accent.
+// Logged days are filled Macrohall green, today is ringed in the school
+// color, the selected day is accent.
 // `accent` and `isDarkMode` are accepted for API compatibility; colors come
 // from the theme.
 export default function LogCalendar({ month, days, today, selected, onSelect, onPrev, onNext }) {
@@ -58,8 +59,8 @@ export default function LogCalendar({ month, days, today, selected, onSelect, on
           const future = today && day > today;
           const isSelected = day === selected;
           const isToday = day === today;
-          const fill = isSelected ? c.accent : logged ? c.ink : 'transparent';
-          const color = isSelected ? '#FFFFFF' : logged ? c.inverse : future ? c.faint : c.muted;
+          const fill = isSelected ? c.accent : logged ? c.primary : 'transparent';
+          const color = isSelected ? '#FFFFFF' : logged ? c.onPrimary : future ? c.faint : c.muted;
           return (
             <Pressable
               key={day}
@@ -83,7 +84,7 @@ export default function LogCalendar({ month, days, today, selected, onSelect, on
       </View>
 
       <View style={styles.legend}>
-        <Legend swatch={<View style={[styles.dot, { backgroundColor: c.ink }]} />} label="Logged" />
+        <Legend swatch={<View style={[styles.dot, { backgroundColor: c.primary }]} />} label="Logged" />
         <Legend swatch={<View style={[styles.dot, styles.dotRing]} />} label="Today" />
         <Legend swatch={<View style={[styles.dot, { backgroundColor: c.accent }]} />} label="Selected" />
       </View>
@@ -129,10 +130,10 @@ const makeStyles = (c) => ({
   cell: { width: `${100 / 7}%`, height: 48, alignItems: 'center', justifyContent: 'center' },
   ring: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'transparent' },
   circle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  today: { borderColor: c.ink },
+  today: { borderColor: c.school },
   dayText: { fontVariant: ['tabular-nums'] },
   dayStrong: { fontFamily: type.bodyStrong.fontFamily },
   legend: { flexDirection: 'row', justifyContent: 'center', gap: space.lg, marginTop: space.md },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  dotRing: { borderWidth: 1.5, borderColor: c.ink },
+  dotRing: { borderWidth: 1.5, borderColor: c.school },
 });

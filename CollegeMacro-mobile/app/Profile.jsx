@@ -177,8 +177,7 @@ export default function Profile({ route, navigation }) {
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <FadeIn index={0}>
         <ProfilePanel
-          emoji={profile.avatar_emoji}
-          color={accent}
+          path={profile.avatar_path}
           name={profile.display_name}
           subtitle={subtitle || (profile.username ? `@${profile.username}` : undefined)}
           live={Boolean(gym?.at_gym_now)}

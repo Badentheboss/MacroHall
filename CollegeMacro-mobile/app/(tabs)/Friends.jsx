@@ -80,7 +80,7 @@ function YouStory({ profile, place, onPress }) {
       style={{ width: 76, alignItems: "center", gap: 6 }}
     >
       <View>
-        <Avatar emoji={profile?.avatar_emoji || "🙂"} color={profile?.accent_color || c.accent} size={62} live={!!place} ring={!place} />
+        <Avatar path={profile?.avatar_path} size={62} live={!!place} ring={!place} />
         <View
           style={{
             position: "absolute",
@@ -89,14 +89,14 @@ function YouStory({ profile, place, onPress }) {
             width: 24,
             height: 24,
             borderRadius: 12,
-            backgroundColor: c.ink,
+            backgroundColor: c.primary,
             borderWidth: 2,
             borderColor: c.bg,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <Ionicons name="add" size={15} color={c.inverse} />
+          <Ionicons name="add" size={15} color={c.onPrimary} />
         </View>
       </View>
       <View style={{ alignItems: "center" }}>
@@ -111,7 +111,7 @@ function YouStory({ profile, place, onPress }) {
   );
 }
 
-// RN Switch in the kit's colors: ink when on, white thumb.
+// RN Switch in the kit's colors: Macrohall green when on, white thumb.
 function Toggle({ value, onValueChange, label }) {
   const { c } = useAppTheme();
   return (
@@ -119,7 +119,7 @@ function Toggle({ value, onValueChange, label }) {
       value={value}
       onValueChange={onValueChange}
       accessibilityLabel={label}
-      trackColor={{ true: c.ink, false: c.faint }}
+      trackColor={{ true: c.primary, false: c.faint }}
       thumbColor="#FFFFFF"
       activeThumbColor="#FFFFFF"
       ios_backgroundColor={c.faint}
@@ -147,7 +147,7 @@ export default function Friends() {
 
   const [me, setMe] = useState(null);
   const [myProfile, setMyProfile] = useState(null);
-  const [looks, setLooks] = useState({}); // id -> { avatar_emoji, accent_color, username }
+  const [looks, setLooks] = useState({}); // id -> { avatar_path, avatar_emoji, accent_color, username }
   const [myPlace, setMyPlace] = useState(null); // { type: 'hall' | 'gym', name, expiresAt }
   const [shareDining, setShareDining] = useState(true);
   const [trackGym, setTrackGym] = useState(false);
@@ -183,7 +183,7 @@ export default function Friends() {
     if (friendIds.length > 0) {
       const { data: friendLooks } = await supabase
         .from("profiles")
-        .select("id, avatar_emoji, accent_color, username")
+        .select("id, avatar_path, avatar_emoji, accent_color, username")
         .in("id", friendIds);
       setLooks(Object.fromEntries((friendLooks || []).map((p) => [p.id, p])));
     }
@@ -210,7 +210,7 @@ export default function Friends() {
 
     const requesterIds = (requestsRes.data || []).map((row) => row.requester_id);
     if (requesterIds.length > 0) {
-      const { data: names } = await supabase.from("profiles").select("id, display_name").in("id", requesterIds);
+      const { data: names } = await supabase.from("profiles").select("id, display_name, avatar_path").in("id", requesterIds);
       setIncoming(names || []);
     } else {
       setIncoming([]);
@@ -444,8 +444,7 @@ export default function Friends() {
           return (
             <StoryBubble
               key={friend.friend_id}
-              emoji={look?.avatar_emoji}
-              color={look?.accent_color}
+              path={look?.avatar_path}
               name={firstName(friend.display_name)}
               caption={friend.gym_name || friend.hall_name || null}
               live={isOut(friend)}
@@ -543,7 +542,7 @@ export default function Friends() {
             <FadeIn key={person.id} index={index}>
               <PersonRow
                 onPress={() => openProfile(person.id)}
-                leading={<Avatar size={48} />}
+                leading={<Avatar path={person.avatar_path} size={48} />}
                 title={person.display_name}
                 subtitle="Wants to be friends"
                 trailing={
@@ -574,7 +573,7 @@ export default function Friends() {
           <FadeIn key={person.id} index={index}>
             <PersonRow
               onPress={() => openProfile(person.id)}
-              leading={<Avatar emoji={person.avatar_emoji} color={person.accent_color} size={48} />}
+              leading={<Avatar path={person.avatar_path} size={48} />}
               title={person.display_name}
               subtitle={person.username ? `@${person.username}` : undefined}
               trailing={
@@ -627,7 +626,7 @@ export default function Friends() {
                 onLongPress={() => friendActions(friend)}
                 accessibilityLabel={`${friend.display_name}, ${friendStatus(friend)}`}
                 accessibilityHint="Opens their profile. Long press for more options."
-                leading={<Avatar emoji={look?.avatar_emoji} color={look?.accent_color} size={52} live={out} />}
+                leading={<Avatar path={look?.avatar_path} size={52} live={out} />}
                 title={friend.display_name}
                 subtitle={
                   <View style={styles.statusLine}>
