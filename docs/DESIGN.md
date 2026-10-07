@@ -18,7 +18,7 @@ Everything lives in `CollegeMacro-mobile/theme/` (tokens) and `CollegeMacro-mobi
 | `muted` | `#6B675F` | Secondary text (AA on bg and surface) |
 | `faint` | `#A39E95` | Placeholders and disabled only, never body text |
 | `hairline` | 9% ink | The rare divider |
-| `accent` | `#E0452B` coral | The one accent: hearts, live, links, "best match", destructive |
+| `accent` | `#BD3A20` tomato (AA on every light surface) | The one accent: hearts, live, links, "best match", destructive |
 | `protein` / `carbs` / `fat` | coral / amber / slate blue | Macro data only |
 
 Dark mode has its own values for the same names. Read colors with `const { c } = useAppTheme()`; never hard-code hex in a screen. The old green `#32745f` is gone.

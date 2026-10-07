@@ -11,7 +11,7 @@ export const palettes = {
     muted: '#6B675F',
     faint: '#A39E95',
     hairline: 'rgba(27,26,23,0.09)',
-    accent: '#E0452B',
+    accent: '#BD3A20', // AA (4.5:1+) on bg, surface, sunken and accentSoft
     accentSoft: '#FBE5DF',
     inverse: '#FFFFFF',
     overlay: 'rgba(15,14,12,0.45)',
