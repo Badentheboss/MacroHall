@@ -1,28 +1,36 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
-  Text,
-  StyleSheet,
   FlatList,
-  TouchableOpacity,
   Modal,
-  TouchableWithoutFeedback,
+  Pressable,
   ScrollView,
-  TextInput,
-  Alert,
   Animated,
   Keyboard,
   Switch,
+  ActivityIndicator,
+  StyleSheet,
 } from "react-native";
-import { FoodListStyles, HeaderSelectorStyles } from '../../styles/AddFood.styles.js';
-import DropDownPicker from "react-native-dropdown-picker";
-import AnimatedProgressWheel from "react-native-progress-wheel";
-import Icon from "react-native-vector-icons/FontAwesome";
+import Reanimated, { SlideInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from "../../utils/config";
-import { useTheme } from '../../context/ThemeContext.jsx';
-import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { formatNutrientDisplay } from "../../utils/nutrients";
+import { formatNutrientDisplay, parseNutritionValue } from "../../utils/nutrients";
+import { motion, radius, space, type, useAppTheme, useStyles } from "../../theme";
+import {
+  Button,
+  Chip,
+  ChipRow,
+  Divider,
+  EmptyState,
+  FadeIn,
+  HeartButton,
+  IconButton,
+  Segmented,
+  TextField,
+  Txt,
+} from "../../components/kit";
 import * as ImagePicker from 'expo-image-picker';
 import { fetchHalls, fetchMySchool, todayInTimezone } from "../../utils/schools";
 import { postToBackend } from "../../utils/api";
@@ -34,9 +42,10 @@ const MEAL_ORDER = [
   { label: "Brunch", value: "brunch" },
   { label: "Lunch", value: "lunch" },
   { label: "Dinner", value: "dinner" },
-  { label: "Late Night", value: "late night" },
+  { label: "Late night", value: "late night" },
 ];
 
+const TOAST_OFFSET = 24;
 const POPUP_VISIBLE_DURATION = 1500;
 const POPUP_HIDE_DURATION = 200;
 const CHECKMARK_VISIBLE_DURATION = 900;
@@ -45,40 +54,54 @@ const SORT_OPTIONS = [
   {
     key: 'none',
     title: 'No sorting',
+    short: 'Menu order',
   },
   {
     key: 'calories-asc',
     title: 'Calories - Lowest to Highest',
+    short: 'Fewest calories',
   },
   {
     key: 'calories-desc',
     title: 'Calories - Highest to Lowest',
+    short: 'Most calories',
   },
   {
     key: 'protein-desc',
     title: 'Protein - Highest First',
+    short: 'Most protein',
   },
   {
     key: 'fat-asc',
     title: 'Fat - Lowest First',
+    short: 'Least fat',
   },
   {
     key: 'fat-desc',
     title: 'Fat - Highest First',
+    short: 'Most fat',
   },
   {
     key: 'carbs-asc',
     title: 'Carbs - Lowest First',
+    short: 'Fewest carbs',
   },
 ];
 
+// Whole-number macro for display ("13.4" -> 13); null when missing.
+const macroValue = (raw) => {
+  const value = parseNutritionValue(raw);
+  return value === null ? null : Math.round(value);
+};
+const macroText = (raw, unit = '') => {
+  const value = macroValue(raw);
+  return value === null ? '—' : `${value}${unit}`;
+};
+
 export function HeaderSelector({ halls, menuDate, selectedDiningHall, setSelectedDiningHall, selectedMealTime, setSelectedMealTime, diningOpen, setDiningOpen, mealOpen, setMealOpen, dismissSearch }) {
-  const { isDarkMode } = useTheme();
   const [mealItems, setMealItems] = useState([]);
 
   const diningItems = (halls || []).map((hall) => ({ label: hall.name, value: hall.slug }));
-
-  const styles = HeaderSelectorStyles(isDarkMode);
 
   // Function to determine current meal time based on current time and day
   const getCurrentMealTime = () => {
@@ -169,61 +192,81 @@ export function HeaderSelector({ halls, menuDate, selectedDiningHall, setSelecte
     fetchAvailableMealTimes();
   }, [selectedDiningHall, halls, menuDate]);
 
-  return (
-    <View style={styles.header}>
-      <View style={styles.dropdownWrapper}>
-        {/* <Text style={styles.headerText}>Dining Hall:</Text> */}
-        <DropDownPicker
-          open={diningOpen}
-          value={selectedDiningHall}
-          items={diningItems}
-          setOpen={setDiningOpen}
-          setValue={setSelectedDiningHall}
-          onOpen={dismissSearch}
-          containerStyle={styles.dropdownContainer}
-          style={styles.dropdown}
-          dropDownContainerStyle={styles.dropDownBox}
-          textStyle={{
-            fontSize: 14,
-            color: isDarkMode ? '#E0E0E0' : '#32745f',
-          }}
-          labelStyle={{
-            color: isDarkMode ? '#E0E0E0' : '#32745f',
-          }}
-          theme={isDarkMode ? "DARK" : "LIGHT"}
-          zIndex={2000}
-        />
-      </View>
+  // Halls scroll sideways as chips (active = ink). Meals the hall serves today
+  // sit in a segmented control, or a chip row when there are too many for one.
+  const pickHall = (slug) => {
+    dismissSearch?.();
+    setDiningOpen?.(false);
+    setSelectedDiningHall(slug);
+  };
+  const pickMeal = (value) => {
+    dismissSearch?.();
+    setMealOpen?.(false);
+    setSelectedMealTime(value);
+  };
+  const mealsAsChips = mealItems.length === 1 || mealItems.length > 4;
 
-      <View style={styles.dropdownWrapper}>
-        {/* <Text style={styles.headerText}>Meal:</Text> */}
-        <DropDownPicker
-          open={mealOpen}
-          value={selectedMealTime}
-          items={mealItems}
-          setOpen={setMealOpen}
-          setValue={setSelectedMealTime}
-          onOpen={dismissSearch}
-          containerStyle={styles.dropdownContainer}
-          style={styles.dropdown}
-          dropDownContainerStyle={styles.dropDownBox}
-          textStyle={{
-            fontSize: 14,
-            color: isDarkMode ? '#E0E0E0' : '#32745f',
-          }}
-          labelStyle={{
-            color: isDarkMode ? '#E0E0E0' : '#32745f',
-          }}
-          theme={isDarkMode ? "DARK" : "LIGHT"}
-          zIndex={1000}
-        />
-      </View>
+  const hallScrollRef = useRef(null);
+  const hallOffsets = useRef({});
+  const scrollToHall = (slug) => {
+    const x = hallOffsets.current[slug];
+    if (x === undefined) return;
+    hallScrollRef.current?.scrollTo?.({ x: Math.max(0, x - space.lg), animated: true });
+  };
+  useEffect(() => {
+    if (selectedDiningHall) scrollToHall(selectedDiningHall);
+  }, [selectedDiningHall]);
+
+  return (
+    <View style={{ gap: space.md }}>
+      {/* Same look as the kit's ChipRow, plus a ref so the active hall
+          scrolls into view (the saved hall can sit off-screen). */}
+      <ScrollView
+        ref={hallScrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.lg }}
+      >
+        {diningItems.map((hall) => (
+          <View
+            key={hall.value}
+            onLayout={(e) => {
+              hallOffsets.current[hall.value] = e.nativeEvent.layout.x;
+              if (hall.value === selectedDiningHall) scrollToHall(hall.value);
+            }}
+          >
+            <Chip
+              label={hall.label}
+              active={hall.value === selectedDiningHall}
+              onPress={() => pickHall(hall.value)}
+            />
+          </View>
+        ))}
+      </ScrollView>
+
+      {mealItems.length > 0 ? (
+        mealsAsChips ? (
+          <ChipRow style={{ paddingHorizontal: space.lg }}>
+            {mealItems.map((meal) => (
+              <Chip
+                key={meal.value}
+                label={meal.label}
+                active={meal.value === selectedMealTime}
+                onPress={() => pickMeal(meal.value)}
+              />
+            ))}
+          </ChipRow>
+        ) : (
+          <View style={{ paddingHorizontal: space.lg }}>
+            <Segmented options={mealItems} value={selectedMealTime} onChange={pickMeal} />
+          </View>
+        )
+      ) : null}
     </View>
   );
 }
 
 export default function FoodList() {
-  const { isDarkMode } = useTheme();
   
   // Function to determine current meal time based on current time and day
   const getInitialMealTime = () => {
@@ -289,7 +332,7 @@ export default function FoodList() {
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState("");
   const [popupType, setPopupType] = useState("success"); // "success", "error", "info"
-  const slideAnim = useRef(new Animated.Value(300)).current;
+  const slideAnim = useRef(new Animated.Value(TOAST_OFFSET)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [clickedButtons, setClickedButtons] = useState(new Set());
   const popupTimerRef = useRef(null);
@@ -301,16 +344,19 @@ export default function FoodList() {
     allergens: true,
   });
   const searchInputRef = useRef(null);
+  const [detailServings, setDetailServings] = useState(1);
 
-  const styles = FoodListStyles(isDarkMode);
+  const { c } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
 
   const showModernPopup = (message, type = "success") => {
     setPopupMessage(message);
     setPopupType(type);
     setShowPopup(true);
 
-    // Reset animations
-    slideAnim.setValue(300);
+    // Reset animations (the toast rises from just below its resting spot)
+    slideAnim.setValue(TOAST_OFFSET);
     fadeAnim.setValue(0);
 
     if (popupTimerRef.current) {
@@ -336,7 +382,7 @@ export default function FoodList() {
       // Fast slide out and fade out animation
       Animated.parallel([
         Animated.timing(slideAnim, {
-          toValue: -320,
+          toValue: TOAST_OFFSET,
           duration: POPUP_HIDE_DURATION,
           useNativeDriver: true,
         }),
@@ -574,7 +620,9 @@ export default function FoodList() {
     }
   };
 
-  const addToLog = async (foodItem, mealTime) => {
+  // `count` comes from the servings stepper in the detail sheet (default 1).
+  const addToLog = async (foodItem, mealTime, count = 1) => {
+    const servingsToAdd = Math.max(1, Math.round(count) || 1);
     const user = await supabase.auth.getUser();
     if (!user.data?.user) {
       showModernPopup("You must be logged in to add food to your log.", "info");
@@ -600,13 +648,24 @@ export default function FoodList() {
       );
   
       if (existingFoodItemIndex === -1) {
-        // If the food item doesn't exist, add it with servings: 1
-        const newLogItem = { 
-          ...foodItem, 
-          servings: 1,
-          baseNutrition: { ...foodItem.nutrition_facts }, // Store original nutrition values
+        // If the food item doesn't exist, add it with servings: 1 (or the
+        // stepper count, scaling the macros the same way repeat adds do)
+        const base = foodItem.nutrition_facts || {};
+        const newLogItem = {
+          ...foodItem,
+          servings: servingsToAdd,
+          baseNutrition: { ...base }, // Store original nutrition values
           mealTime: mealTime
         };
+        if (servingsToAdd > 1) {
+          newLogItem.nutrition_facts = {
+            ...base,
+            calories: base.calories * servingsToAdd,
+            protein: base.protein * servingsToAdd,
+            total_carbohydrate: base.total_carbohydrate * servingsToAdd,
+            total_fat: base.total_fat * servingsToAdd,
+          };
+        }
         const updatedLog = [...userData.log, newLogItem];
   
         const { error: insertError } = await supabase
@@ -620,7 +679,12 @@ export default function FoodList() {
         } else {
           setAddedItems((prev) => [...prev, foodItem.name]);
           triggerButtonFeedback(foodItem.name);
-          showModernPopup(`Added ${foodItem.name} to your log!`, "success");
+          showModernPopup(
+            servingsToAdd > 1
+              ? `Added ${servingsToAdd} servings of ${foodItem.name}`
+              : `Added ${foodItem.name} to your log`,
+            "success"
+          );
           setTimeout(() => {
             setAddedItems((prev) =>
               prev.filter((name) => name !== foodItem.name)
@@ -631,7 +695,7 @@ export default function FoodList() {
         // If the food item exists, increment servings and recalculate nutrition
         const updatedLog = [...userData.log];
         const item = updatedLog[existingFoodItemIndex];
-        item.servings += 1;
+        item.servings += servingsToAdd;
   
         // Recalculate nutrition facts based on base values × servings
         item.nutrition_facts = {
@@ -652,7 +716,12 @@ export default function FoodList() {
         } else {
           setAddedItems((prev) => [...prev, foodItem.name]);
           triggerButtonFeedback(foodItem.name);
-          showModernPopup(`Added another serving of ${foodItem.name}!`, "success");
+          showModernPopup(
+            servingsToAdd > 1
+              ? `Added ${servingsToAdd} more servings of ${foodItem.name}`
+              : `Added another serving of ${foodItem.name}`,
+            "success"
+          );
           setTimeout(() => {
             setAddedItems((prev) =>
               prev.filter((name) => name !== foodItem.name)
@@ -670,6 +739,7 @@ export default function FoodList() {
     setMealOpen(false);
 
     setCurrentFoodItem(item);
+    setDetailServings(1);
     setModalVisible(true);
   };
 
@@ -822,22 +892,182 @@ export default function FoodList() {
     Keyboard.dismiss();
   };
 
-  return (
-    <TouchableWithoutFeedback 
-      onPress={() => {
-        setDiningOpen(false);
-        setMealOpen(false);
-      }}
+  const sections = getFilteredSections();
+  const dishCount = sections.reduce((total, section) => total + section.data.length, 0);
+  const activeFilterCount =
+    (sortOption !== 'none' ? 1 : 0) +
+    (filterByPreferences !== initialFilterSettings.current.preferences ? 1 : 0) +
+    (filterByAllergens !== initialFilterSettings.current.allergens ? 1 : 0);
+  const activeSort = SORT_OPTIONS.find((option) => option.key === sortOption);
+
+  const resetFilters = () => {
+    setSortOption('none');
+    setFilterByAllergens(initialFilterSettings.current.allergens);
+    setFilterByPreferences(initialFilterSettings.current.preferences);
+  };
+
+  // Flatten stations + dishes into one list so cards can stagger in by index.
+  const rows = [];
+  let dishIndex = 0;
+  sections.forEach((section) => {
+    rows.push({ kind: 'station', key: `station-${section.subheader}`, title: section.subheader, first: rows.length === 0 });
+    section.data.forEach((foodItem) => {
+      rows.push({ kind: 'dish', key: `dish-${foodItem.id ?? foodItem.name}-${section.subheader}`, foodItem, index: dishIndex });
+      dishIndex += 1;
+    });
+  });
+
+  // Labels shown on a card and in the sheet: estimated nutrition, saved
+  // allergens it contains, and dietary traits (the student's matches first).
+  const getDishFlags = (foodItem) => {
+    // Check if the item's allergens array contains any of the user's selected allergens
+    const matchingAllergens = userPreferences.allergens.filter(allergen =>
+      foodItem.allergens?.some(itemAllergen =>
+        itemAllergen.toLowerCase() === allergen.toLowerCase()
+      )
+    );
+
+    // Check if the item's traits array contains any of the user's selected preferences
+    const matchingPreferences = userPreferences.preferences.filter(pref =>
+      foodItem.traits?.some(trait =>
+        trait.toLowerCase() === pref.toLowerCase()
+      )
+    );
+
+    const otherTraits = (foodItem.traits || []).filter(
+      (trait) => !matchingPreferences.some((pref) => pref.toLowerCase() === (trait || '').toLowerCase())
+    );
+
+    return {
+      matchingAllergens,
+      matchingPreferences,
+      otherTraits,
+      isEstimate: ESTIMATED_SOURCES.has(foodItem.nutrition_source),
+    };
+  };
+
+  const renderRow = ({ item: row }) => {
+    if (row.kind === 'station') {
+      return (
+        <Txt variant="overline" tone="muted" style={[styles.station, row.first && { marginTop: space.sm }]}>
+          {row.title}
+        </Txt>
+      );
+    }
+
+    const { foodItem, index } = row;
+    const flags = getDishFlags(foodItem);
+    const favorite = favoriteKeys.has(dishKey(foodItem.name));
+    const justAdded = clickedButtons.has(foodItem.name);
+    const facts = foodItem.nutrition_facts || {};
+    // Traits stay tiny: the student's matches first, three labels at most.
+    const traitTags = [...flags.matchingPreferences, ...flags.otherTraits].slice(0, 3);
+
+    return (
+      <FadeIn index={index} style={styles.cardSpacing}>
+        <View style={styles.card}>
+          {/* The body opens the sheet; heart and add sit beside it (not
+              inside it) so buttons are never nested. */}
+          <Pressable
+            onPress={() => {
+              dismissSearch();
+              handleFoodPress(foodItem);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`${foodItem.name}, ${macroText(facts.calories)} calories, ${macroText(facts.protein)} grams protein`}
+            accessibilityHint="Opens nutrition details"
+            style={({ pressed }) => [styles.cardBody, pressed && { opacity: 0.6 }]}
+          >
+            <Txt variant="title" numberOfLines={2}>
+              {foodItem.name}
+            </Txt>
+            <MacroLine facts={facts} />
+            {(flags.isEstimate || flags.matchingAllergens.length > 0 || traitTags.length > 0) && (
+              <View style={styles.tagRow}>
+                {flags.isEstimate && <Tag label="Estimated" icon="sparkles-outline" />}
+                {flags.matchingAllergens.map((allergen) => (
+                  <Tag key={`allergen-${allergen}`} label={`Contains ${allergen}`} icon="alert-circle-outline" tone="warning" />
+                ))}
+                {traitTags.map((trait) => (
+                  <Tag
+                    key={`trait-${trait}`}
+                    label={trait}
+                    icon={flags.matchingPreferences.includes(trait) ? 'checkmark' : undefined}
+                  />
+                ))}
+              </View>
+            )}
+          </Pressable>
+
+          <View style={styles.cardActions}>
+            <HeartButton
+              active={favorite}
+              tone={c.muted}
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                toggleFavorite(foodItem.name);
+              }}
+              label={favorite ? `Remove ${foodItem.name} from favorites` : `Add ${foodItem.name} to favorites`}
+            />
+            <Pressable
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                dismissSearch();
+                addToLog(foodItem, selectedMealTime);
+              }}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel={`Add ${foodItem.name} to log`}
+              style={({ pressed }) => [styles.addButton, pressed && { opacity: 0.8, transform: [{ scale: 0.94 }] }]}
+            >
+              <Ionicons name={justAdded ? 'checkmark' : 'add'} size={22} color={c.inverse} />
+            </Pressable>
+          </View>
+        </View>
+      </FadeIn>
+    );
+  };
+
+  const toast = showPopup ? (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.toastWrap,
+        { bottom: space.lg },
+        {
+          transform: [{ translateY: slideAnim }],
+          opacity: fadeAnim
+        }
+      ]}
     >
-      <View style={styles.container}>
-        <Text 
-          style={styles.title}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-        >
-          {selectedHall?.name || 'Dining Hall'} {selectedMealTime?.charAt(0).toUpperCase() + selectedMealTime?.slice(1)} Menu
-        </Text>
-        
+      <View style={styles.toast} accessibilityLiveRegion="polite" accessibilityRole="alert">
+        <Ionicons
+          name={
+            popupType === "success" ? "checkmark-circle" :
+            popupType === "error" ? "alert-circle" : "information-circle"
+          }
+          size={18}
+          color={popupType === "error" ? c.accent : c.inverse}
+        />
+        <Txt variant="small" tone="inverse" numberOfLines={2} style={styles.toastText}>
+          {popupMessage}
+        </Txt>
+      </View>
+    </Animated.View>
+  ) : null;
+
+  const detailFacts = currentFoodItem?.nutrition_facts || {};
+  const detailFlags = currentFoodItem ? getDishFlags(currentFoodItem) : null;
+  const detailFavorite = currentFoodItem ? favoriteKeys.has(dishKey(currentFoodItem.name)) : false;
+  const detailAdded = currentFoodItem ? clickedButtons.has(currentFoodItem.name) : false;
+  const scaled = (raw) => {
+    const value = parseNutritionValue(raw);
+    return value === null ? null : Math.round(value * detailServings);
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.top}>
         <HeaderSelector
           halls={halls}
           menuDate={menuDate}
@@ -853,23 +1083,13 @@ export default function FoodList() {
         />
 
         {/* Search Bar + Filter */}
-        <View style={styles.searchAndFilterRow}>
-          <View style={[
-            styles.searchContainer,
-            isSearchFocused && styles.searchContainerFocused
-          ]}>
-            <View style={styles.searchIconContainer}>
-              <MaterialIcons 
-                name="search" 
-                size={18} 
-                color={isSearchFocused ? '#32745f' : (isDarkMode ? '#888' : '#666')} 
-              />
-            </View>
-            <TextInput
+        <View style={styles.searchRow}>
+          <View style={styles.searchField}>
+            <TextField
               ref={searchInputRef}
-              style={styles.searchInput}
-              placeholder="Search food items..."
-              placeholderTextColor={isDarkMode ? '#AAA' : '#666'}
+              icon="search"
+              placeholder="Search dishes, stations, vegan…"
+              accessibilityLabel="Search dishes"
               value={searchQuery}
               onChangeText={setSearchQuery}
               onFocus={() => {
@@ -883,545 +1103,494 @@ export default function FoodList() {
               returnKeyType="search"
               autoCorrect={false}
               autoCapitalize="none"
+              inputStyle={searchQuery.length > 0 ? { paddingRight: space.xxl } : null}
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity
+              <Pressable
                 onPress={() => setSearchQuery("")}
                 style={styles.clearButton}
+                hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Clear search"
               >
-                <MaterialIcons 
-                  name="clear" 
-                  size={20} 
-                  color={isDarkMode ? '#AAA' : '#666'} 
-                />
-              </TouchableOpacity>
+                <Ionicons name="close-circle" size={18} color={c.muted} />
+              </Pressable>
             )}
           </View>
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              hasActiveFilters && styles.filterButtonActive
-            ]}
+          <IconButton
+            name="options-outline"
+            tone="filled"
+            label="Open filters"
+            badge={hasActiveFilters ? activeFilterCount || undefined : undefined}
+            style={styles.filterButton}
             onPress={() => {
+              dismissSearch();
               setFilterModalVisible(true);
               setDiningOpen(false);
               setMealOpen(false);
             }}
-            accessibilityRole="button"
-            accessibilityLabel="Open filters"
-          >
-            <MaterialIcons 
-              name="tune" 
-              size={20} 
-              color={isDarkMode ? '#E0E0E0' : '#32745f'} 
-            />
-          </TouchableOpacity>
-        </View>
-
-        {loading ? (
-          <Text></Text>
-        ) : foodItems.length === 0 && selectedHall ? (
-          <View style={styles.emptyMenu}>
-            <MaterialIcons name="restaurant" size={40} color={isDarkMode ? '#888' : '#9BB8AC'} />
-            <Text style={styles.emptyMenuTitle}>No {selectedMealTime} menu posted for {selectedHall.name} yet</Text>
-            <Text style={styles.emptyMenuText}>
-              At the hall? Snap the menu board and we'll add today's dishes for everyone.
-            </Text>
-            <TouchableOpacity
-              style={styles.emptyMenuButton}
-              onPress={shareMenuPhoto}
-              disabled={uploadingPhoto}
-              accessibilityRole="button"
-            >
-              <MaterialIcons name="photo-camera" size={18} color="#fff" />
-              <Text style={styles.emptyMenuButtonText}>
-                {uploadingPhoto ? 'Reading menu...' : 'Snap the menu'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <FlatList
-            data={getFilteredSections()}
-            keyExtractor={(item, index) => index.toString()}
-            renderItem={({ item }) => (
-              <View>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: '600',
-                  color: isDarkMode ? '#888' : '#666',
-                  marginTop: 8,
-                  marginBottom: 8,
-                  paddingHorizontal: 16,
-                }}>
-                  {item.subheader}
-                </Text>
-                {item.data.map((foodItem, index) => {
-                  // Helper function to normalize allergen strings
-                  const normalizeAllergen = (allergen) => {
-                    const allergenMap = {
-                      "WHEAT/BARLEY/RYE": "wheat/barley/rye",
-                      "SESAME SEED": "sesame seed",
-                      "TREE NUTS": "tree nuts",
-                      "ITEM IS DEEP FRIED": "item is deep fried"
-                    };
-                    return allergenMap[allergen] || allergen.toLowerCase();
-                  };
-
-                  // Check if the item's allergens array contains any of the user's selected allergens
-                  const matchingAllergens = userPreferences.allergens.filter(allergen => 
-                    foodItem.allergens?.some(itemAllergen => 
-                      itemAllergen.toLowerCase() === allergen.toLowerCase()
-                    )
-                  );
-
-                  // Check if the item's traits array contains any of the user's selected preferences
-                  const matchingPreferences = userPreferences.preferences.filter(pref => 
-                    foodItem.traits?.some(trait => 
-                      trait.toLowerCase() === pref.toLowerCase()
-                    )
-                  );
-
-                  const isEstimate = ESTIMATED_SOURCES.has(foodItem.nutrition_source);
-                  const isAdded = addedItems.includes(foodItem.name);
-                  const dailyCalories = userDailyValues?.dailyCalories || 2000;
-
-                  return (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.foodItem}
-                      onPress={() => {
-                        dismissSearch();
-                        handleFoodPress(foodItem);
-                      }}
-                    >
-                      <View style={styles.foodDetails}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <Text style={[styles.foodName, { flexShrink: 1 }]}>{foodItem.name}</Text>
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              toggleFavorite(foodItem.name);
-                            }}
-                            hitSlop={10}
-                            style={{ marginLeft: 6 }}
-                            accessibilityRole="button"
-                            accessibilityLabel={favoriteKeys.has(dishKey(foodItem.name)) ? `Remove ${foodItem.name} from favorites` : `Add ${foodItem.name} to favorites`}
-                          >
-                            <MaterialIcons
-                              name={favoriteKeys.has(dishKey(foodItem.name)) ? 'favorite' : 'favorite-border'}
-                              size={18}
-                              color={favoriteKeys.has(dishKey(foodItem.name)) ? '#E53935' : (isDarkMode ? '#888' : '#AAA')}
-                            />
-                          </TouchableOpacity>
-                        </View>
-                        
-                        {/* Only show labels if there are matches */}
-                        {(matchingAllergens.length > 0 || matchingPreferences.length > 0 || isEstimate) && (
-                          <View style={styles.labelContainer}>
-                            {isEstimate && (
-                              <View style={[styles.label, styles.estimateLabel]}>
-                                <Text style={[styles.labelText, styles.estimateLabelText]}>Estimated nutrition</Text>
-                              </View>
-                            )}
-                            {matchingAllergens.map(allergen => (
-                              <View key={allergen} style={[styles.label, styles.allergenLabel]}>
-                                <Text style={[styles.labelText, styles.allergenLabelText]}>
-                                  Contains {allergen}
-                                </Text>
-                              </View>
-                            ))}
-                            {matchingPreferences.map(pref => (
-                              <View key={pref} style={[styles.label, styles.preferenceLabel]}>
-                                <Text style={[styles.labelText, styles.preferenceLabelText]}>
-                                  {pref}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        )}
-
-                        {/* Displaying all four progress wheels horizontally */}
-                        <View style={styles.progressWheelRow}>
-                          <View style={styles.progressWheelContainer}>
-                            
-                            <View style={styles.wheelWrapper}>
-                              <AnimatedProgressWheel
-                                size={50}
-                                width={8}
-                                color="#32745f"
-                                backgroundColor={isDarkMode ? '#333' : "#E8F5E9"}
-                                progress={(foodItem.nutrition_facts.calories / dailyCalories) * 100}
-                                rotation="-90deg"
-                              />
-                              <Text style={styles.centerValue}>
-                                {foodItem.nutrition_facts.calories}
-                              </Text>
-                            </View>
-                            <Text style={styles.wheelLabel}>Calories</Text>
-                          </View>
-
-                          <View style={styles.progressWheelContainer}>
-                            <View style={styles.wheelWrapper}>
-                              <AnimatedProgressWheel
-                                size={50}
-                                width={8}
-                                color="#2196F3"
-                                backgroundColor={isDarkMode ? '#333' : "#E3F2FD"}
-                                progress={(foodItem.nutrition_facts.protein / (userDailyValues?.dailyProtein || 50)) * 100}
-                                rotation="-90deg"
-                              />
-                              <Text style={styles.centerValue}>
-                                {foodItem.nutrition_facts.protein}g
-                              </Text>
-                            </View>
-                            <Text style={styles.wheelLabel}>Protein</Text>
-                          </View>
-
-                          <View style={styles.progressWheelContainer}>
-                            <View style={styles.wheelWrapper}>
-                              <AnimatedProgressWheel
-                                size={50}
-                                width={8}
-                                color="#4CAF50"
-                                backgroundColor={isDarkMode ? '#333' : "#E8F5E9"}
-                                progress={(foodItem.nutrition_facts.total_carbohydrate / (userDailyValues?.dailyCarbs || 275)) * 100}
-                                rotation="-90deg"
-                              />
-                              <Text style={styles.centerValue}>
-                                {foodItem.nutrition_facts.total_carbohydrate}g
-                              </Text>
-                            </View>
-                            <Text style={styles.wheelLabel}>Carbs</Text>
-                          </View>
-
-                          <View style={styles.progressWheelContainer}>
-                            <View style={styles.wheelWrapper}>
-                              <AnimatedProgressWheel
-                                size={50}
-                                width={8}
-                                color="#FF9800"
-                                backgroundColor={isDarkMode ? '#333' : "#FFF3E0"}
-                                progress={(foodItem.nutrition_facts.total_fat / (userDailyValues?.dailyFat || 60)) * 100}
-                                rotation="-90deg"
-                              />
-                              <Text style={styles.centerValue}>
-                                {foodItem.nutrition_facts.total_fat}g
-                              </Text>
-                            </View>
-                            <Text style={styles.wheelLabel}>Fat</Text>
-                          </View>
-                        </View>
-                      </View>
-
-                      <TouchableOpacity
-                        style={styles.addButton}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          dismissSearch();
-                          addToLog(foodItem, selectedMealTime);
-                        }}
-                      >
-                        <MaterialIcons 
-                          name={clickedButtons.has(foodItem.name) ? "check" : "add"} 
-                          size={24} 
-                          color={isDarkMode ? '#E0E0E0' : '#32745f'} 
-                        />
-                      </TouchableOpacity>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-            onScrollBeginDrag={() => {
-              setDiningOpen(false);
-              setMealOpen(false);
-            }}
-            keyboardShouldPersistTaps="handled"
           />
-        )}
+        </View>
+      </View>
 
-        <Modal
-          visible={filterModalVisible}
-          animationType="fade"
-          transparent
-          onRequestClose={() => setFilterModalVisible(false)}
-        >
-          <View style={styles.filterModalOverlay}>
-            <TouchableWithoutFeedback onPress={() => setFilterModalVisible(false)}>
-              <View style={styles.filterModalBackdrop} />
-            </TouchableWithoutFeedback>
+      {loading ? (
+        <View style={styles.loading}>
+          <ActivityIndicator color={c.muted} />
+        </View>
+      ) : foodItems.length === 0 && selectedHall ? (
+        <ScrollView contentContainerStyle={styles.emptyWrap} keyboardShouldPersistTaps="handled">
+          <EmptyState
+            icon="camera-outline"
+            title={`No ${selectedMealTime} menu posted for ${selectedHall.name} yet`}
+            body="At the hall? Snap the menu board and we'll add today's dishes for everyone."
+            action={uploadingPhoto ? 'Reading menu…' : 'Snap the menu'}
+            onAction={uploadingPhoto ? undefined : shareMenuPhoto}
+          />
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(row) => row.key}
+          renderItem={renderRow}
+          contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            foodItems.length > 0 ? (
+              <Txt variant="caption" tone="muted" style={styles.summary}>
+                {`Today · ${dishCount} ${dishCount === 1 ? 'dish' : 'dishes'}${activeSort && sortOption !== 'none' ? ` · ${activeSort.short.toLowerCase()} first` : ''}`}
+              </Txt>
+            ) : null
+          }
+          ListEmptyComponent={
+            foodItems.length > 0 ? (
+              <EmptyState
+                icon="search-outline"
+                title="Nothing matches"
+                body={searchQuery.trim() ? `No dishes match "${searchQuery.trim()}" with your filters.` : 'Your filters hide every dish on this menu.'}
+                action={searchQuery.trim() ? 'Clear search' : 'Reset filters'}
+                onAction={() => (searchQuery.trim() ? setSearchQuery('') : resetFilters())}
+              />
+            ) : null
+          }
+          onScrollBeginDrag={() => {
+            setDiningOpen(false);
+            setMealOpen(false);
+          }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        />
+      )}
 
-            <View style={styles.filterModalContent}>
-                  <View style={styles.filterModalHeader}>
-                    <Text style={styles.filterModalTitle}>Filters</Text>
-                    <TouchableOpacity
-                      onPress={() => setFilterModalVisible(false)}
-                      style={styles.filterCloseButton}
-                      accessibilityRole="button"
-                      accessibilityLabel="Close filters"
-                    >
-                      <MaterialIcons
-                        name="close"
-                        size={20}
-                        color={isDarkMode ? '#E0E0E0' : '#666'}
+      {/* Sort & filter sheet */}
+      <Modal
+        visible={filterModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <View style={styles.sheetOverlay}>
+          <Pressable
+            style={styles.backdrop}
+            onPress={() => setFilterModalVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close filters"
+          />
+          <Reanimated.View entering={SlideInDown.duration(motion.base)} style={[styles.sheet, { paddingBottom: space.lg + insets.bottom }]}>
+            <View style={styles.handle} />
+            <View style={styles.sheetHeader}>
+              <Txt variant="h2">Sort & filter</Txt>
+              <IconButton name="close" label="Close filters" onPress={() => setFilterModalVisible(false)} />
+            </View>
+
+            <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.sheetSection}>
+                <Txt variant="overline" tone="muted">Sort by</Txt>
+                <View style={styles.wrap}>
+                  {SORT_OPTIONS.map((option) => (
+                    <View key={option.key} accessible={false}>
+                      <Chip
+                        label={option.short}
+                        active={sortOption === option.key}
+                        onPress={() => setSortOption(option.key)}
                       />
-                    </TouchableOpacity>
-                  </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
 
-                  <ScrollView
-                    style={styles.filterModalScroll}
-                    contentContainerStyle={styles.filterModalScrollContent}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    <View style={styles.filterSection}>
-                      <Text style={styles.filterSectionTitle}>Sort by</Text>
-                      {SORT_OPTIONS.map((option) => (
-                        <TouchableOpacity
-                          key={option.key}
-                          style={[
-                            styles.filterOptionRow,
-                            sortOption === option.key && styles.filterOptionRowActive,
-                          ]}
-                          onPress={() => setSortOption(option.key)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Sort by ${option.title}`}
-                        >
-                          <MaterialIcons
-                            name={sortOption === option.key ? 'radio-button-checked' : 'radio-button-unchecked'}
-                            size={20}
-                            color={sortOption === option.key ? '#32745f' : (isDarkMode ? '#AAA' : '#666')}
-                            style={styles.filterOptionIcon}
-                          />
-                          <View style={styles.filterOptionTextWrapper}>
-                            <Text style={styles.filterOptionTitle}>{option.title}</Text>
-                            {option.subtitle ? (
-                              <Text style={styles.filterOptionSubtitle}>{option.subtitle}</Text>
+              <View style={styles.sheetSection}>
+                <Txt variant="overline" tone="muted">Personal filters</Txt>
+                <View>
+                  <ToggleRow
+                    title="Hide my allergens"
+                    subtitle="Remove dishes that include allergens you have saved."
+                    value={filterByAllergens}
+                    onValueChange={setFilterByAllergens}
+                  />
+                  <Divider />
+                  <ToggleRow
+                    title="Only show my dietary preferences"
+                    subtitle="Limit the list to foods that match preferences you selected."
+                    value={filterByPreferences}
+                    onValueChange={setFilterByPreferences}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.sheetFooter}>
+              <Button
+                title="Reset"
+                variant="ghost"
+                onPress={resetFilters}
+                accessibilityLabel="Reset filters"
+              />
+              <View style={{ flex: 1 }}>
+                <Button
+                  title="Apply"
+                  size="lg"
+                  onPress={() => setFilterModalVisible(false)}
+                  accessibilityLabel="Apply filters"
+                />
+              </View>
+            </View>
+          </Reanimated.View>
+        </View>
+      </Modal>
+
+      {/* Nutrition detail sheet */}
+      <Modal
+        visible={modalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.sheetOverlay}>
+          <Pressable
+            style={styles.backdrop}
+            onPress={() => setModalVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close details"
+          />
+          {currentFoodItem && (
+            <Reanimated.View entering={SlideInDown.duration(motion.base)} style={[styles.sheet, styles.detailSheet, { paddingBottom: space.lg + insets.bottom }]}>
+              <View style={styles.handle} />
+              <View style={styles.detailHeader}>
+                <View style={{ flex: 1, gap: space.xs }}>
+                  {currentFoodItem.subheader ? (
+                    <Txt variant="overline" tone="muted">
+                      {[selectedHall?.name, currentFoodItem.subheader].filter(Boolean).join(' · ')}
+                    </Txt>
+                  ) : null}
+                  <Txt variant="h2">{currentFoodItem.name}</Txt>
+                  {detailFacts?.serving_size ? (
+                    <Txt variant="caption" tone="muted">
+                      Serving size {String(detailFacts.serving_size).trim()}
+                      {/^\d+(\.\d+)?$/.test(String(detailFacts.serving_size).trim()) ? 'g' : ''}
+                    </Txt>
+                  ) : null}
+                </View>
+                <View style={styles.detailHeaderActions}>
+                  <HeartButton
+                    active={detailFavorite}
+                    onPress={() => toggleFavorite(currentFoodItem.name)}
+                    label={detailFavorite ? `Remove ${currentFoodItem.name} from favorites` : `Add ${currentFoodItem.name} to favorites`}
+                  />
+                  <IconButton name="close" label="Close details" onPress={() => setModalVisible(false)} />
+                </View>
+              </View>
+
+              <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} showsVerticalScrollIndicator={false}>
+                {/* Big macros (scaled by the servings stepper) */}
+                <View style={styles.bigMacros}>
+                  <BigMacro value={scaled(detailFacts.calories)} label="calories" />
+                  <BigMacro value={scaled(detailFacts.protein)} unit="g" label="protein" color={c.protein} />
+                  <BigMacro value={scaled(detailFacts.total_carbohydrate)} unit="g" label="carbs" color={c.carbs} />
+                  <BigMacro value={scaled(detailFacts.total_fat)} unit="g" label="fat" color={c.fat} />
+                </View>
+
+                {(detailFlags.isEstimate || detailFlags.matchingAllergens.length > 0) && (
+                  <View style={styles.tagRow}>
+                    {detailFlags.isEstimate && <Tag label="Estimated nutrition" icon="sparkles-outline" />}
+                    {detailFlags.matchingAllergens.map((allergen) => (
+                      <Tag key={`d-allergen-${allergen}`} label={`Contains ${allergen}`} icon="alert-circle-outline" tone="warning" />
+                    ))}
+                  </View>
+                )}
+
+                {/* All Nutrition Facts (per serving) */}
+                <View>
+                  <Txt variant="overline" tone="muted" style={{ marginBottom: space.xs }}>
+                    Nutrition per serving
+                  </Txt>
+                  {Object.entries(detailFacts)
+                    .filter(([key]) => !['calories', 'protein', 'total_carbohydrate', 'total_fat', 'serving_size'].includes(key))
+                    .map(([key, value]) => {
+                      const label = key.split('_')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
+                      const { valueLabel, percentLabel } = formatNutrientDisplay(key, value);
+
+                      if (valueLabel === '—') {
+                        return null;
+                      }
+
+                      return (
+                        <View key={key}>
+                          <View style={styles.nutrientRow}>
+                            <Txt variant="small" style={{ flex: 1 }}>{label.charAt(0) + label.slice(1).toLowerCase()}</Txt>
+                            {percentLabel ? (
+                              <Txt variant="caption" tone="muted">{percentLabel}</Txt>
                             ) : null}
+                            <Txt variant="small" style={styles.nutrientValue}>{valueLabel}</Txt>
                           </View>
-                        </TouchableOpacity>
+                          <Divider />
+                        </View>
+                      );
+                    })}
+                </View>
+
+                {/* Allergens Section */}
+                {currentFoodItem.allergens && currentFoodItem.allergens.length > 0 && (
+                  <View style={styles.sheetSection}>
+                    <Txt variant="overline" tone="muted">Allergens</Txt>
+                    <View style={styles.tagRow}>
+                      {currentFoodItem.allergens.map((allergen, index) => (
+                        <Tag
+                          key={index}
+                          label={allergen}
+                          size="md"
+                          tone={detailFlags.matchingAllergens.some((a) => a.toLowerCase() === allergen.toLowerCase()) ? 'warning' : undefined}
+                        />
                       ))}
                     </View>
-
-                    <View style={styles.filterSection}>
-                      <Text style={styles.filterSectionTitle}>Personal filters</Text>
-
-                      <View style={styles.filterSwitchRow}>
-                        <View style={styles.filterSwitchTextWrapper}>
-                          <Text style={styles.filterSwitchTitle}>Hide my allergens</Text>
-                          <Text style={styles.filterSwitchSubtitle}>
-                            Remove dishes that include allergens you have saved.
-                          </Text>
-                        </View>
-                        <Switch
-                          value={filterByAllergens}
-                          onValueChange={setFilterByAllergens}
-                          trackColor={{ false: isDarkMode ? '#555' : '#CFCFCF', true: '#32745f' }}
-                          thumbColor={filterByAllergens ? '#FFFFFF' : (isDarkMode ? '#999999' : '#F5F5F5')}
-                          ios_backgroundColor={isDarkMode ? '#333333' : '#CFCFCF'}
-                        />
-                      </View>
-
-                      <View style={styles.filterSwitchRow}>
-                        <View style={styles.filterSwitchTextWrapper}>
-                          <Text style={styles.filterSwitchTitle}>Only show my dietary preferences</Text>
-                          <Text style={styles.filterSwitchSubtitle}>
-                            Limit the list to foods that match preferences you selected.
-                          </Text>
-                        </View>
-                        <Switch
-                          value={filterByPreferences}
-                          onValueChange={setFilterByPreferences}
-                          trackColor={{ false: isDarkMode ? '#555' : '#CFCFCF', true: '#32745f' }}
-                          thumbColor={filterByPreferences ? '#FFFFFF' : (isDarkMode ? '#999999' : '#F5F5F5')}
-                          ios_backgroundColor={isDarkMode ? '#333333' : '#CFCFCF'}
-                        />
-                      </View>
-                    </View>
-                  </ScrollView>
-
-                  <View style={styles.filterFooter}>
-                    <TouchableOpacity
-                      style={styles.filterFooterButtonSecondary}
-                      onPress={() => {
-                        setSortOption('none');
-                        setFilterByAllergens(initialFilterSettings.current.allergens);
-                        setFilterByPreferences(initialFilterSettings.current.preferences);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Reset filters"
-                    >
-                      <Text style={styles.filterFooterButtonSecondaryText}>Reset</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.filterFooterButtonPrimary}
-                      onPress={() => setFilterModalVisible(false)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Apply filters"
-                    >
-                      <Text style={styles.filterFooterButtonPrimaryText}>Done</Text>
-                    </TouchableOpacity>
                   </View>
+                )}
+
+                {/* Traits Section */}
+                {currentFoodItem.traits && currentFoodItem.traits.length > 0 && (
+                  <View style={styles.sheetSection}>
+                    <Txt variant="overline" tone="muted">Dietary info</Txt>
+                    <View style={styles.tagRow}>
+                      {currentFoodItem.traits.map((trait, index) => (
+                        <Tag key={index} label={trait} size="md" />
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </ScrollView>
+
+              <View style={styles.sheetFooter}>
+                <View style={styles.stepper} accessibilityRole="adjustable" accessibilityLabel={`Servings, ${detailServings}`}>
+                  <IconButton
+                    name="remove"
+                    size={20}
+                    label="One less serving"
+                    onPress={() => setDetailServings((n) => Math.max(1, n - 1))}
+                    style={detailServings <= 1 ? { opacity: 0.4 } : null}
+                  />
+                  <View style={styles.stepperValue}>
+                    <Txt variant="number">{detailServings}</Txt>
+                    <Txt variant="caption" tone="muted">{detailServings === 1 ? 'serving' : 'servings'}</Txt>
+                  </View>
+                  <IconButton
+                    name="add"
+                    size={20}
+                    label="One more serving"
+                    onPress={() => setDetailServings((n) => Math.min(20, n + 1))}
+                  />
                 </View>
-            </View>
-          </Modal>
-
-        <Modal visible={modalVisible} animationType="slide" transparent={true}>
-          <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
-            <View style={styles.modalContainer}>
-              <TouchableWithoutFeedback>
-                <View style={styles.modalContent}>
-                  {currentFoodItem && (
-                    <>
-                      <View style={styles.modalHeader}>
-                        <TouchableOpacity 
-                          style={styles.closeButton}
-                          onPress={() => setModalVisible(false)}
-                        >
-                          <MaterialIcons name="close" size={24} color={isDarkMode ? '#E0E0E0' : '#666'} />
-                        </TouchableOpacity>
-                        <Text style={styles.modalTitle} numberOfLines={0}>
-                          {currentFoodItem.name}
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.addButton}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            addToLog(currentFoodItem, selectedMealTime);
-                          }}
-                        >
-                          <Icon 
-                            name={clickedButtons.has(currentFoodItem?.name) ? "check" : "plus"} 
-                            size={20} 
-                            style={styles.addButtonIcon} 
-                          />
-                        </TouchableOpacity>
-                      </View>
-
-                      {/* Compact Macros */}
-                      <View style={styles.macroRow}>
-                        <Text style={styles.macroText}>
-                          {currentFoodItem.nutrition_facts.calories} cal |  
-                          Proteins: {currentFoodItem.nutrition_facts.protein}g |  
-                          Carbs: {currentFoodItem.nutrition_facts.total_carbohydrate}g |  
-                          Fats: {currentFoodItem.nutrition_facts.total_fat}g
-                        </Text>
-                        {currentFoodItem.nutrition_facts?.serving_size ? (
-                          <Text style={styles.servingSizeText}>
-                            Serving size: {String(currentFoodItem.nutrition_facts.serving_size).trim()}
-                          </Text>
-                        ) : null}
-                      </View>
-
-                      {/* All Nutrition Facts */}
-                      <ScrollView 
-                        style={styles.modalScroll}
-                        showsVerticalScrollIndicator={true}
-                      >
-                        <View style={styles.modalScrollContent}>
-                          <View style={styles.nutritionGrid}>
-                            {Object.entries(currentFoodItem.nutrition_facts)
-                              .filter(([key]) => !['calories', 'protein', 'total_carbohydrate', 'total_fat', 'serving_size'].includes(key))
-                              .map(([key, value]) => {
-                                const label = key.split('_')
-                                  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                                  .join(' ');
-                                const { valueLabel, percentLabel } = formatNutrientDisplay(key, value);
-
-                                if (valueLabel === '—') {
-                                  return null;
-                                }
-
-                                return (
-                                  <View key={key} style={styles.nutritionItem}>
-                                    <Text style={styles.nutritionLabel}>{label}</Text>
-                                    <Text style={styles.nutritionValue}>{valueLabel}</Text>
-                                    {percentLabel && (
-                                      <Text style={styles.nutritionSubLabel}>{percentLabel}</Text>
-                                    )}
-                                  </View>
-                                );
-                              })}
-                          </View>
-
-                          {/* Allergens Section */}
-                          {currentFoodItem.allergens && currentFoodItem.allergens.length > 0 && (
-                            <View style={styles.section}>
-                              <Text style={styles.sectionTitle}>Allergens</Text>
-                              <View style={styles.tagContainer}>
-                                {currentFoodItem.allergens.map((allergen, index) => (
-                                  <View key={index} style={[styles.tag, styles.allergenTag]}>
-                                    <Text style={styles.allergenText}>{allergen}</Text>
-                                  </View>
-                                ))}
-                              </View>
-                            </View>
-                          )}
-
-                          {/* Traits Section */}
-                          {currentFoodItem.traits && currentFoodItem.traits.length > 0 && (
-                            <View style={styles.section}>
-                              <Text style={styles.sectionTitle}>Dietary Information</Text>
-                              <View style={styles.tagContainer}>
-                                {currentFoodItem.traits.map((trait, index) => (
-                                  <View key={index} style={[styles.tag, styles.traitTag]}>
-                                    <Text style={styles.traitText}>{trait}</Text>
-                                  </View>
-                                ))}
-                              </View>
-                            </View>
-                          )}
-                        </View>
-                      </ScrollView>
-                    </>
-                  )}
+                <View style={{ flex: 1 }}>
+                  <Button
+                    title={detailAdded ? 'Added' : 'Add to log'}
+                    icon={detailAdded ? 'checkmark' : 'add'}
+                    size="lg"
+                    accessibilityLabel={`Add ${detailServings} ${detailServings === 1 ? 'serving' : 'servings'} of ${currentFoodItem.name} to log`}
+                    onPress={() => addToLog(currentFoodItem, selectedMealTime, detailServings)}
+                  />
                 </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        {/* Modern Popup Notification */}
-        {showPopup && (
-          <Animated.View style={[
-            styles.popupContainer,
-            { 
-              transform: [{ translateX: slideAnim }],
-              opacity: fadeAnim
-            }
-          ]}>
-            <View style={[
-              styles.popup,
-              popupType === "success" && styles.popupSuccess,
-              popupType === "error" && styles.popupError,
-              popupType === "info" && styles.popupInfo
-            ]}>
-              <View style={styles.popupContent}>
-                <MaterialIcons 
-                  name={
-                    popupType === "success" ? "check-circle" :
-                    popupType === "error" ? "error" : "info"
-                  }
-                  size={20} 
-                  color={
-                    popupType === "success" ? "#4CAF50" :
-                    popupType === "error" ? "#F44336" : "#2196F3"
-                  } 
-                  style={styles.popupIcon}
-                />
-                <Text style={styles.popupText}>{popupMessage}</Text>
               </View>
-              <View style={[
-                styles.popupProgressBar,
-                popupType === "success" && styles.popupProgressSuccess,
-                popupType === "error" && styles.popupProgressError,
-                popupType === "info" && styles.popupProgressInfo
-              ]} />
-            </View>
-          </Animated.View>
-        )}
-      </View>
-    </TouchableWithoutFeedback>
+            </Reanimated.View>
+          )}
+          {/* Feedback shows above the sheet too */}
+          {toast}
+        </View>
+      </Modal>
+
+      {/* Toast */}
+      {!modalVisible && toast}
+    </View>
   );
 }
+
+// "180 cal · ● 13g P · ● 2g C · ● 13g F" with a colored dot per macro.
+function MacroLine({ facts }) {
+  const { c } = useAppTheme();
+  const items = [
+    { key: 'P', value: facts.protein, color: c.protein, name: 'protein' },
+    { key: 'C', value: facts.total_carbohydrate, color: c.carbs, name: 'carbs' },
+    { key: 'F', value: facts.total_fat, color: c.fat, name: 'fat' },
+  ];
+  return (
+    <View
+      style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: space.md, rowGap: 2 }}
+      accessible
+      accessibilityLabel={`${macroText(facts.calories)} calories, ${items.map((m) => `${macroText(m.value)} grams ${m.name}`).join(', ')}`}
+    >
+      <Txt variant="small" style={{ fontFamily: type.bodyStrong.fontFamily }}>
+        {macroText(facts.calories)} cal
+      </Txt>
+      {items.map((m) => (
+        <View key={m.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: m.color }} />
+          <Txt variant="small" tone="muted">
+            {macroText(m.value, 'g')} {m.key}
+          </Txt>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// Tiny label on a card. tone="warning" is the coral allergen warning.
+function Tag({ label, icon, tone, size = 'sm' }) {
+  const { c } = useAppTheme();
+  const warning = tone === 'warning';
+  const color = warning ? c.accent : c.muted;
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        height: size === 'md' ? 30 : 22,
+        paddingHorizontal: size === 'md' ? space.md : space.sm,
+        borderRadius: radius.pill,
+        backgroundColor: warning ? c.accentSoft : c.sunken,
+      }}
+    >
+      {icon ? <Ionicons name={icon} size={size === 'md' ? 14 : 12} color={color} /> : null}
+      <Txt variant="caption" color={warning ? c.accent : size === 'md' ? c.ink : c.muted} style={{ fontFamily: type.bodyStrong.fontFamily }}>
+        {label}
+      </Txt>
+    </View>
+  );
+}
+
+// One of the four big numbers at the top of the detail sheet.
+function BigMacro({ value, unit = '', label, color }) {
+  const { c } = useAppTheme();
+  return (
+    <View style={{ flex: 1, alignItems: 'flex-start', gap: 2 }}>
+      <Txt variant="number" style={{ fontSize: 24, lineHeight: 28, fontVariant: ['tabular-nums'] }}>
+        {value === null ? '—' : `${value}${unit}`}
+      </Txt>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        {color ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} /> : null}
+        <Txt variant="caption" tone="muted" color={color ? undefined : c.muted}>
+          {label}
+        </Txt>
+      </View>
+    </View>
+  );
+}
+
+// Title + explanation + switch, used in the filter sheet.
+function ToggleRow({ title, subtitle, value, onValueChange }) {
+  const { c } = useAppTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingVertical: space.md }}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Txt variant="bodyStrong">{title}</Txt>
+        <Txt variant="caption" tone="muted">{subtitle}</Txt>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        accessibilityLabel={title}
+        trackColor={{ false: c.sunken, true: c.ink }}
+        thumbColor={c.surface}
+        activeThumbColor={c.surface}
+        ios_backgroundColor={c.sunken}
+      />
+    </View>
+  );
+}
+
+const makeStyles = (c) => ({
+  container: { flex: 1, backgroundColor: c.bg },
+  top: { paddingTop: space.sm, paddingBottom: space.md, gap: space.md, backgroundColor: c.bg },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg },
+  searchField: { flex: 1, justifyContent: 'center' },
+  clearButton: { position: 'absolute', right: space.md, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  filterButton: { width: 52, height: 52, borderRadius: radius.md },
+  listContent: { paddingHorizontal: space.lg, paddingBottom: space.xxxl + space.xxl },
+  summary: { marginBottom: space.sm },
+  station: { marginTop: space.xl, marginBottom: space.md },
+  cardSpacing: { marginBottom: space.md },
+  card: {
+    backgroundColor: c.surface,
+    borderRadius: radius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardBody: { flex: 1, gap: space.sm, padding: space.lg, paddingRight: space.sm },
+  cardActions: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingRight: space.lg },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: c.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs + 2 },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  loading: { paddingTop: space.xxxl, alignItems: 'center' },
+  emptyWrap: { paddingHorizontal: space.lg, paddingTop: space.xl },
+
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: c.overlay },
+  sheet: {
+    backgroundColor: c.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingTop: space.sm,
+    maxHeight: '88%',
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
+  },
+  detailSheet: { maxHeight: '90%' },
+  handle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: c.hairline, marginBottom: space.sm },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: space.xl, paddingRight: space.md },
+  detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, paddingLeft: space.xl, paddingRight: space.md, paddingTop: space.sm },
+  detailHeaderActions: { flexDirection: 'row', alignItems: 'center', marginTop: -space.sm },
+  sheetScroll: { flexGrow: 0, flexShrink: 1 },
+  sheetScrollContent: { paddingHorizontal: space.xl, paddingTop: space.lg, paddingBottom: space.lg, gap: space.xl },
+  sheetSection: { gap: space.md },
+  bigMacros: { flexDirection: 'row', gap: space.sm, backgroundColor: c.sunken, borderRadius: radius.lg, padding: space.lg },
+  nutrientRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
+  nutrientValue: { fontFamily: type.bodyStrong.fontFamily, minWidth: 64, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  sheetFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingHorizontal: space.xl,
+    paddingTop: space.md,
+  },
+  stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.sunken, borderRadius: radius.pill, height: 56, paddingHorizontal: space.xs },
+  stepperValue: { minWidth: 44, alignItems: 'center' },
+
+  toastWrap: { position: 'absolute', left: space.lg, right: space.lg, alignItems: 'center' },
+  toast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    backgroundColor: c.ink,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    maxWidth: 420,
+  },
+  toastText: { flexShrink: 1, fontFamily: type.bodyStrong.fontFamily },
+});

@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
-import { useTheme } from "../context/ThemeContext";
+import React, { useCallback, useEffect, useState } from "react";
+import { Alert, TextInput, View } from "react-native";
 import { postToBackend } from "../utils/api";
 import { addItemsToLog } from "../utils/log";
 import { fetchHalls, fetchMySchool } from "../utils/schools";
+import { radius, space, type, useAppTheme, useStyles } from "../theme";
+import { Button, Chip, ChipRow, Divider, EmptyState, FadeIn, Screen, Txt } from "../components/kit";
 
 const MEALS = ["breakfast", "brunch", "lunch", "dinner", "late night"];
 const label = (meal) => meal.replace(/^\w/, (c) => c.toUpperCase());
@@ -13,8 +13,8 @@ const label = (meal) => meal.replace(/^\w/, (c) => c.toUpperCase());
 // servings per dining hall to land on the target, ranks halls, and logs the
 // chosen plate in one tap.
 export default function PlateBuilder({ navigation }) {
-  const { isDarkMode } = useTheme();
-  const styles = useMemo(() => makeStyles(isDarkMode), [isDarkMode]);
+  const { c } = useAppTheme();
+  const styles = useStyles(makeStyles);
 
   const [halls, setHalls] = useState([]);
   const [hall, setHall] = useState(null); // null = every hall
@@ -73,156 +73,195 @@ export default function PlateBuilder({ navigation }) {
     }
   };
 
-  const Chip = ({ active, onPress, children }) => (
-    <TouchableOpacity style={[styles.chip, active && styles.chipActive]} onPress={onPress}>
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{children}</Text>
-    </TouchableOpacity>
-  );
+  const plates = result?.plates || [];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.label}>Target for this meal</Text>
-      <View style={styles.targetRow}>
-        <View style={styles.targetBox}>
-          <TextInput
-            style={styles.targetInput}
-            value={protein}
-            onChangeText={(v) => setProtein(v.replace(/[^0-9]/g, ""))}
-            keyboardType="number-pad"
-            placeholder="—"
-            placeholderTextColor="#888"
-          />
-          <Text style={styles.targetUnit}>g protein</Text>
+    <Screen contentStyle={styles.content}>
+      {/* Targets */}
+      <View style={styles.section}>
+        <Txt variant="overline" tone="muted">Target for this meal</Txt>
+        <View style={styles.targetRow}>
+          <TargetInput value={protein} onChange={setProtein} unit="g protein" color={c.protein} accessibilityLabel="Protein target in grams" />
+          <TargetInput value={calories} onChange={setCalories} unit="calories" accessibilityLabel="Calorie target" />
         </View>
-        <View style={styles.targetBox}>
-          <TextInput
-            style={styles.targetInput}
-            value={calories}
-            onChangeText={(v) => setCalories(v.replace(/[^0-9]/g, ""))}
-            keyboardType="number-pad"
-            placeholder="—"
-            placeholderTextColor="#888"
-          />
-          <Text style={styles.targetUnit}>calories</Text>
-        </View>
-      </View>
-      <Text style={styles.hint}>Starts from what you have left today. Change it for a lighter meal or a pre-lift snack.</Text>
-
-      <Text style={styles.label}>Meal</Text>
-      <View style={styles.wrap}>
-        {MEALS.map((m) => (
-          <Chip key={m} active={meal === m} onPress={() => setMeal(m)}>
-            {label(m)}
-          </Chip>
-        ))}
+        <Txt variant="caption" tone="muted">
+          Starts from what you have left today. Change it for a lighter meal or a pre-lift snack.
+        </Txt>
       </View>
 
-      {halls.length > 1 && (
-        <>
-          <Text style={styles.label}>Dining hall</Text>
-          <View style={styles.wrap}>
-            <Chip active={!hall} onPress={() => setHall(null)}>
-              Best on campus
-            </Chip>
-            {halls.map((h) => (
-              <Chip key={h.id} active={hall === h.name} onPress={() => setHall(h.name)}>
-                {h.name}
-              </Chip>
+      {/* Meal */}
+      <View style={styles.section}>
+        <Txt variant="overline" tone="muted">Meal</Txt>
+        <View style={styles.bleed}>
+          <ChipRow style={styles.chipRow}>
+            {MEALS.map((m) => (
+              <Chip key={m} label={label(m)} active={meal === m} onPress={() => setMeal(m)} />
             ))}
+          </ChipRow>
+        </View>
+      </View>
+
+      {/* Dining hall */}
+      {halls.length > 1 && (
+        <View style={styles.section}>
+          <Txt variant="overline" tone="muted">Dining hall</Txt>
+          <View style={styles.bleed}>
+            <ChipRow style={styles.chipRow}>
+              <Chip label="Best on campus" icon={!hall ? "sparkles" : "sparkles-outline"} active={!hall} onPress={() => setHall(null)} />
+              {halls.map((h) => (
+                <Chip key={h.id} label={h.name} active={hall === h.name} onPress={() => setHall(h.name)} />
+              ))}
+            </ChipRow>
           </View>
-        </>
+        </View>
       )}
 
-      <TouchableOpacity style={styles.buildButton} onPress={() => build()} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buildText}>Build my plate</Text>}
-      </TouchableOpacity>
+      <Button title="Build my plate" size="lg" icon="restaurant-outline" onPress={() => build()} loading={loading} disabled={loading} />
 
-      {result?.message && <Text style={[styles.hint, { textAlign: "center", marginTop: 16 }]}>{result.message}</Text>}
+      {result?.message && (
+        <EmptyState
+          icon="restaurant-outline"
+          title={plates.length ? undefined : "No plate this time"}
+          body={result.message}
+          style={styles.empty}
+        />
+      )}
 
-      {(result?.plates || []).map((plate, index) => (
-        <View key={plate.hall} style={[styles.plate, index === 0 && styles.bestPlate]}>
-          <View style={styles.plateHeader}>
-            <Text style={styles.plateHall}>{plate.hall}</Text>
-            {index === 0 && <Text style={styles.best}>BEST MATCH</Text>}
-          </View>
-
-          {plate.items.map((item) => (
-            <View key={`${item.name}-${item.subheader}`} style={styles.itemRow}>
-              <Text style={styles.servings}>{item.servings}×</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                {item.subheader ? <Text style={styles.hint}>{item.subheader}</Text> : null}
-              </View>
-              <Text style={styles.itemMacros}>
-                {Math.round(Number(item.nutrition_facts?.protein || 0) * item.servings)}g · {Math.round(Number(item.nutrition_facts?.calories || 0) * item.servings)} cal
-              </Text>
+      {plates.map((plate, index) => (
+        <FadeIn key={plate.hall} index={index}>
+          <View style={styles.plate}>
+            <View style={styles.plateHeader}>
+              {index === 0 && (
+                <Txt variant="overline" tone="accent">
+                  Best match
+                </Txt>
+              )}
+              <Txt variant="h2">{plate.hall}</Txt>
             </View>
-          ))}
 
-          <View style={styles.totals}>
-            <Total label="Protein" value={`${Math.round(plate.totals.protein)}g`} goal={`${Math.round(result.target.protein)}g`} styles={styles} />
-            <Total label="Calories" value={plate.totals.calories} goal={Math.round(result.target.calories)} styles={styles} />
-            <Total label="Carbs" value={`${Math.round(plate.totals.carbs)}g`} styles={styles} />
-            <Total label="Fat" value={`${Math.round(plate.totals.fat)}g`} styles={styles} />
+            <View>
+              {plate.items.map((item, itemIndex) => (
+                <View key={`${item.name}-${item.subheader}`}>
+                  {itemIndex > 0 && <Divider />}
+                  <View style={styles.itemRow}>
+                    <View style={styles.servings}>
+                      <Txt variant="caption" style={styles.servingsText}>
+                        {item.servings}×
+                      </Txt>
+                    </View>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Txt variant="bodyStrong" numberOfLines={2}>
+                        {item.name}
+                      </Txt>
+                      {item.subheader ? (
+                        <Txt variant="caption" tone="muted">
+                          {item.subheader}
+                        </Txt>
+                      ) : null}
+                    </View>
+                    <View style={styles.itemMacros}>
+                      <Txt variant="small" style={styles.tabular}>
+                        {Math.round(Number(item.nutrition_facts?.protein || 0) * item.servings)}g
+                      </Txt>
+                      <Txt variant="caption" tone="muted" style={styles.tabular}>
+                        {Math.round(Number(item.nutrition_facts?.calories || 0) * item.servings)} cal
+                      </Txt>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.totals}>
+              <Total label="Protein" value={`${Math.round(plate.totals.protein)}g`} goal={`${Math.round(result.target.protein)}g`} color={c.protein} />
+              <Total label="Calories" value={Math.round(plate.totals.calories)} goal={Math.round(result.target.calories)} />
+              <Total label="Carbs" value={`${Math.round(plate.totals.carbs)}g`} color={c.carbs} />
+              <Total label="Fat" value={`${Math.round(plate.totals.fat)}g`} color={c.fat} />
+            </View>
+
+            {plate.items.some((item) => item.nutrition_source === "ai_estimated" || item.nutrition_source === "crowdsourced") && (
+              <Txt variant="caption" tone="muted">
+                Some numbers are estimates.
+              </Txt>
+            )}
+
+            <Button
+              title={logging === plate.hall ? "Logging..." : "Log this plate"}
+              variant="secondary"
+              icon="add-circle-outline"
+              onPress={() => logPlate(plate)}
+              disabled={logging !== null}
+              accessibilityLabel={`Log the ${plate.hall} plate`}
+            />
           </View>
-
-          {plate.items.some((item) => item.nutrition_source === "ai_estimated" || item.nutrition_source === "crowdsourced") && (
-            <Text style={styles.hint}>Some numbers are estimates.</Text>
-          )}
-
-          <TouchableOpacity style={styles.logButton} onPress={() => logPlate(plate)} disabled={logging !== null}>
-            <MaterialIcons name="playlist-add" size={20} color="#fff" />
-            <Text style={styles.logText}>{logging === plate.hall ? "Logging..." : "Log this plate"}</Text>
-          </TouchableOpacity>
-        </View>
+        </FadeIn>
       ))}
-    </ScrollView>
+    </Screen>
   );
 }
 
-function Total({ label: name, value, goal, styles }) {
+// Big tabular number typed straight into a sunken card, unit caption below.
+function TargetInput({ value, onChange, unit, color, accessibilityLabel }) {
+  const { c } = useAppTheme();
   return (
-    <View style={{ alignItems: "center", flex: 1 }}>
-      <Text style={styles.totalValue}>{value}</Text>
-      <Text style={styles.hint}>{goal ? `${name} / ${goal}` : name}</Text>
+    <View style={{ flex: 1, backgroundColor: c.sunken, borderRadius: radius.lg, paddingVertical: space.lg, paddingHorizontal: space.md, alignItems: "center", gap: space.xs }}>
+      <TextInput
+        value={value}
+        onChangeText={(v) => onChange(v.replace(/[^0-9]/g, ""))}
+        keyboardType="number-pad"
+        placeholder="—"
+        placeholderTextColor={c.faint}
+        accessibilityLabel={accessibilityLabel}
+        maxLength={5}
+        style={[
+          type.number,
+          { fontSize: 34, lineHeight: 40, color: c.ink, textAlign: "center", alignSelf: "stretch", padding: 0, outlineStyle: "none" },
+        ]}
+      />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        {color ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} /> : null}
+        <Txt variant="caption" tone="muted">
+          {unit}
+        </Txt>
+      </View>
     </View>
   );
 }
 
-const makeStyles = (isDarkMode) => {
-  const text = isDarkMode ? "#E0E0E0" : "#222";
-  const subtle = isDarkMode ? "#999" : "#666";
-  const surface = isDarkMode ? "#1E1E1E" : "#fff";
-  const border = isDarkMode ? "#333" : "rgba(50,116,95,0.2)";
+function Total({ label: name, value, goal, color }) {
+  return (
+    <View style={{ flex: 1, gap: 2 }}>
+      <Txt variant="number" style={{ fontVariant: ["tabular-nums"] }}>
+        {value}
+      </Txt>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+        {color ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} /> : null}
+        <Txt variant="caption" tone="muted" numberOfLines={1}>
+          {name}
+        </Txt>
+      </View>
+      {goal ? (
+        <Txt variant="caption" tone="muted" numberOfLines={1} accessibilityLabel={`${name} target ${goal}`} style={color ? { paddingLeft: 11 } : null}>
+          of {goal}
+        </Txt>
+      ) : null}
+    </View>
+  );
+}
 
-  return StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDarkMode ? "#121212" : "#f5f7fa" },
-    content: { padding: 16, paddingBottom: 48 },
-    label: { fontSize: 14, fontWeight: "700", color: text, marginTop: 16, marginBottom: 8 },
-    hint: { fontSize: 12, color: subtle, marginTop: 4 },
-    targetRow: { flexDirection: "row", gap: 12 },
-    targetBox: { flex: 1, backgroundColor: surface, borderRadius: 14, borderWidth: 1.5, borderColor: border, padding: 12, alignItems: "center" },
-    targetInput: { fontSize: 28, fontWeight: "800", color: text, minWidth: 80, textAlign: "center" },
-    targetUnit: { fontSize: 13, color: subtle },
-    wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    chip: { borderWidth: 1.5, borderColor: border, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12, backgroundColor: surface },
-    chipActive: { backgroundColor: "#32745f", borderColor: "#32745f" },
-    chipText: { fontSize: 14, fontWeight: "600", color: text },
-    chipTextActive: { color: "#fff" },
-    buildButton: { backgroundColor: "#32745f", borderRadius: 14, paddingVertical: 15, alignItems: "center", marginTop: 20 },
-    buildText: { color: "#fff", fontSize: 17, fontWeight: "800" },
-    plate: { backgroundColor: surface, borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: border },
-    bestPlate: { borderColor: "#32745f", borderWidth: 2 },
-    plateHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-    plateHall: { fontSize: 18, fontWeight: "800", color: text },
-    best: { fontSize: 11, fontWeight: "800", color: "#32745f" },
-    itemRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6 },
-    servings: { fontSize: 15, fontWeight: "800", color: "#32745f", width: 28 },
-    itemName: { fontSize: 15, fontWeight: "600", color: text },
-    itemMacros: { fontSize: 13, color: subtle },
-    totals: { flexDirection: "row", marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: border },
-    totalValue: { fontSize: 16, fontWeight: "800", color: text },
-    logButton: { flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", backgroundColor: "#2E7D32", borderRadius: 12, paddingVertical: 11, marginTop: 12 },
-    logText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  });
-};
+const makeStyles = (c) => ({
+  content: { gap: space.xl },
+  section: { gap: space.md },
+  targetRow: { flexDirection: "row", gap: space.md },
+  bleed: { marginHorizontal: -space.lg },
+  chipRow: { paddingHorizontal: space.lg },
+  empty: { paddingVertical: space.xl },
+  plate: { backgroundColor: c.surface, borderRadius: radius.lg, padding: space.xl, gap: space.lg },
+  plateHeader: { gap: space.xs },
+  itemRow: { flexDirection: "row", alignItems: "center", gap: space.md, paddingVertical: space.md },
+  servings: { minWidth: 36, height: 28, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: c.sunken, alignItems: "center", justifyContent: "center" },
+  servingsText: { fontFamily: type.title.fontFamily, fontVariant: ["tabular-nums"] },
+  itemMacros: { alignItems: "flex-end", gap: 2 },
+  tabular: { fontVariant: ["tabular-nums"], fontFamily: type.bodyStrong.fontFamily },
+  totals: { flexDirection: "row", gap: space.sm, backgroundColor: c.sunken, borderRadius: radius.md, padding: space.lg },
+});
