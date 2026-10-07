@@ -1,8 +1,9 @@
-// Dashboard.tsx
+// Dashboard: today at a glance. Calories left, macro rings, favorites on the
+// menu, the "hit my macros" plate builder, the gym, and micronutrients.
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, TouchableWithoutFeedback } from "react-native";
-import { MaterialIcons } from '@expo/vector-icons';
-import { Svg, Circle } from 'react-native-svg';
+import { View, Modal, Pressable, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import Animated, { Easing, SlideInDown } from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from "../../utils/config";
 import { DIET_TYPES, buildMacroTargets, getDietByKey } from "../../utils/macros";
 import {
@@ -14,65 +15,132 @@ import {
   parseNutritionValue,
   roundNutrientValue,
 } from "../../utils/nutrients";
-import AnimatedProgressWheel from "react-native-progress-wheel";
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import DashboardExtras from '../../components/DashboardExtras';
 import { useTheme } from '../../context/ThemeContext';
+import { motion, radius, space, type, useAppTheme, useStyles } from '../../theme';
+import {
+  Button,
+  Card,
+  Chip,
+  Divider,
+  FadeIn,
+  IconButton,
+  MacroRing,
+  NumberTicker,
+  ProgressBar,
+  Screen,
+  Segmented,
+  Tap,
+  TextField,
+  Txt,
+} from '../../components/kit';
 
-const MACRO_COLORS = {
-  carbs: '#F4A261',
-  protein: '#2A9D8F',
-  fat: '#E76F51',
-};
+const formatCount = (n) => Math.round(Math.abs(n || 0)).toLocaleString('en-US');
 
-const DietPieChart = ({ carbs, protein, fat, size = 72, strokeWidth = 12 }) => {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const segments = [
-    { value: carbs, color: MACRO_COLORS.carbs },
-    { value: protein, color: MACRO_COLORS.protein },
-    { value: fat, color: MACRO_COLORS.fat },
+const prettyNutrient = (key) =>
+  key
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+// Calorie split of a diet as one stacked bar in the macro colors.
+function DietSplitBar({ split }) {
+  const { c } = useAppTheme();
+  const parts = [
+    { key: 'protein', value: split.protein, color: c.protein },
+    { key: 'carbs', value: split.carbs, color: c.carbs },
+    { key: 'fat', value: split.fat, color: c.fat },
   ];
-
-  let cumulative = 0;
-
   return (
-    <Svg width={size} height={size}>
-      <Circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke={MACRO_COLORS.carbs}
-        strokeWidth={strokeWidth}
-        opacity={0.08}
-        fill="transparent"
-      />
-      {segments.map((segment, index) => {
-        const startValue = cumulative;
-        const dashArray = circumference;
-        const dashOffset = circumference - (segment.value / 100) * circumference;
-        cumulative += segment.value;
-
-        return (
-          <Circle
-            key={`${segment.color}-${index}`}
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={segment.color}
-            strokeWidth={strokeWidth}
-            strokeDasharray={`${dashArray} ${dashArray}`}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="butt"
-            fill="transparent"
-            rotation={-90 + (startValue / 100) * 360}
-            origin={`${size / 2}, ${size / 2}`}
-          />
-        );
-      })}
-    </Svg>
+    <View style={{ flexDirection: 'row', height: 6, borderRadius: radius.pill, overflow: 'hidden', gap: 2 }}>
+      {parts.map((part) => (
+        <View key={part.key} style={{ flex: part.value, backgroundColor: part.color }} />
+      ))}
+    </View>
   );
-};
+}
+
+const splitLabel = (split) => `${split.protein}% P · ${split.carbs}% C · ${split.fat}% F`;
+
+// Bottom sheet on a dimmed backdrop. Tapping the backdrop closes it.
+function Sheet({ visible, onClose, title, overline, children }) {
+  const styles = useStyles(sheetStyles);
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
+        <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
+        <Animated.View entering={Platform.OS === 'web' ? SlideInDown.duration(motion.base) : SlideInDown.duration(motion.slow).easing(Easing.out(Easing.cubic))} style={styles.sheet}>
+          <View style={styles.grabber} />
+          <View style={styles.sheetHeader}>
+            <View style={{ flex: 1, gap: 2 }}>
+              {overline ? <Txt variant="overline" tone="muted">{overline}</Txt> : null}
+              <Txt variant="h2">{title}</Txt>
+            </View>
+            <IconButton name="close" label="Close" tone="filled" size={20} onPress={onClose} />
+          </View>
+          {children}
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const sheetStyles = (c) => ({
+  backdrop: { flex: 1, justifyContent: 'flex-end' },
+  scrim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: c.overlay },
+  sheet: {
+    backgroundColor: c.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingHorizontal: space.xl,
+    paddingTop: space.md,
+    paddingBottom: space.xxl,
+    gap: space.lg,
+    maxHeight: '88%',
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
+  },
+  grabber: { alignSelf: 'center', width: 40, height: 5, borderRadius: radius.pill, backgroundColor: c.sunken },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+});
+
+// One of the three small macro rings: grams left inside, name + eaten/goal under.
+function MacroStat({ label, eaten, goal, color }) {
+  const left = goal - eaten;
+  const over = left < 0;
+  return (
+    <View style={{ flex: 1, alignItems: 'center', gap: space.sm }} accessible accessibilityLabel={`${label}: ${formatCount(left)} grams ${over ? 'over' : 'left'}, ${formatCount(eaten)} of ${formatCount(goal)} grams eaten`}>
+      <MacroRing progress={goal > 0 ? eaten / goal : 0} size={88} stroke={8} color={color}>
+        <NumberTicker value={Math.abs(left)} variant="title" format={(n) => `${Math.round(n)}g`} />
+        <Txt variant="caption" tone="muted" style={{ fontSize: 11, lineHeight: 13 }}>{over ? 'over' : 'left'}</Txt>
+      </MacroRing>
+      <View style={{ alignItems: 'center' }}>
+        <Txt variant="small" style={{ fontFamily: type.bodyStrong.fontFamily }}>{label}</Txt>
+        <Txt variant="caption" tone="muted">
+          {formatCount(eaten)} / {formatCount(goal)}g
+        </Txt>
+      </View>
+    </View>
+  );
+}
+
+const dashboardStyles = (c) => ({
+  intro: { gap: space.xs, paddingTop: space.sm },
+  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -space.sm, marginBottom: space.sm },
+  heroBody: { flexDirection: 'row', alignItems: 'center', gap: space.xl },
+  ringCenter: { alignItems: 'center' },
+  heroStats: { flex: 1, gap: space.lg },
+  stat: { gap: 2 },
+  macrosHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md, marginBottom: space.lg },
+  macroRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  microRow: { gap: space.xs, paddingVertical: space.sm + 2 },
+  microTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.md },
+  microBar: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  dietOption: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.md },
+  recommendation: { alignItems: 'center', gap: space.xs },
+});
 
 export default function Dashboard() {
   const navigation = useNavigation();
@@ -109,486 +177,9 @@ export default function Dashboard() {
   // Add this object with recommended daily values
   const recommendedDailyValues = getRecommendedDailyValues();
 
-  // Move styles inside component to access isDarkMode
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: isDarkMode ? '#121212' : "#f5f7fa",
-    },
-    contentContainer: {
-      padding: 20,
-      paddingBottom: 40, // Add extra padding at bottom for better scrolling
-    },
-    dateText: {
-      fontSize: 28,
-      fontWeight: "800",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      marginBottom: 24,
-      marginTop: 12,
-    },
-    caloriesCard: {
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-      borderRadius: 20,
-      padding: 24,
-      shadowColor: isDarkMode ? "#000" : "#32745f",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: isDarkMode ? 0.3 : 0.1,
-      shadowRadius: 12,
-      elevation: 5,
-      marginBottom: 24,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.1)",
-    },
-    cardHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 20,
-    },
-    cardTitle: {
-      fontSize: 22,
-      fontWeight: "800",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      letterSpacing: 0.5,
-    },
-    editButton: {
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      backgroundColor: isDarkMode ? 'rgba(224, 224, 224, 0.1)' : "rgba(50, 116, 95, 0.1)",
-    },
-    editButtonText: {
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    caloriesContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    wheelContainer: {
-      position: "relative",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 10,
-    },
-    wheelCenter: {
-      position: "absolute",
-      alignItems: "center",
-      backgroundColor: isDarkMode ? 'rgba(36, 36, 36, 0.9)' : "rgba(255, 255, 255, 0.9)",
-      borderRadius: 35,
-      padding: 15,
-    },
-    remainingText: {
-      fontSize: 28,
-      fontWeight: "800",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-    },
-    remainingLabel: {
-      fontSize: 14,
-      color: isDarkMode ? '#888' : "#666",
-      fontWeight: "600",
-      marginTop: 4,
-    },
-    caloriesSummary: {
-      marginLeft: 24,
-      padding: 16,
-      borderRadius: 16,
-      minWidth: 140,
-    },
-    summaryItem: {
-      marginBottom: 12,
-    },
-    summaryLabel: {
-      fontSize: 14,
-      color: isDarkMode ? '#888' : "#666",
-      marginBottom: 4,
-      fontWeight: "600",
-    },
-    summaryValue: {
-      fontSize: 20,
-      fontWeight: "700",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-    },
-    macrosCard: {
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-      borderRadius: 20,
-      padding: 24,
-      shadowColor: isDarkMode ? "#000" : "#32745f",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: isDarkMode ? 0.3 : 0.1,
-      shadowRadius: 12,
-      elevation: 5,
-      marginBottom: 24,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.1)",
-    },
-    macrosContent: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginTop: 20,
-      paddingHorizontal: 10,
-    },
-    macroWheel: {
-      alignItems: "center",
-      borderRadius: 16,
-      padding: 16,
-      width: '25%',
-    },
-    macroCenter: {
-      position: "absolute",
-      top: "50%",
-      left: "90%",
-      transform: [
-        { translateX: -25 },
-        { translateY: -25 }
-      ],
-      width: 50,
-      height: 50,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: isDarkMode ? '#242424' : "#fff",      
-      borderRadius: 25,
-      padding: 5,
-    },
-    macroValue: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      textAlign: "center",
-    },
-    macroLabel: {
-      fontSize: 10,
-      color: isDarkMode ? '#888' : "#666",      
-      fontWeight: "600",
-      marginTop: 1,
-      textAlign: "center",
-    },
-    macroTotal: {
-      fontSize: 14,
-      color: isDarkMode ? '#888' : "#666",      
-      fontWeight: '500',
-      marginTop: 10,
-      paddingVertical: 3,
-      paddingHorizontal: 6,
-      borderRadius: 6,
-      width: 200,
-      textAlign: 'center',
-    },
-    dietActivePill: {
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      borderRadius: 999,
-      backgroundColor: isDarkMode ? '#1f3c32' : 'rgba(50,116,95,0.12)',
-    },
-    dietActiveText: {
-      color: '#32745f',
-      fontWeight: '600',
-      fontSize: 13,
-    },
-    dietSectionTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: isDarkMode ? '#E0E0E0' : '#2D5A47',
-      marginTop: 24,
-      marginBottom: 12,
-    },
-    dietGrid: {
-      gap: 12,
-    },
-    dietCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 14,
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#2f2f2f' : 'rgba(50, 116, 95, 0.15)',
-      backgroundColor: isDarkMode ? '#1a1a1a' : '#fff',
-      position: 'relative',
-    },
-    dietCardSelected: {
-      borderColor: '#32745f',
-      shadowColor: '#32745f',
-      shadowOpacity: isDarkMode ? 0.35 : 0.2,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 6,
-    },
-    dietChartWrapper: {
-      marginRight: 16,
-    },
-    dietInfo: {
-      flex: 1,
-    },
-    dietTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: isDarkMode ? '#E0E0E0' : '#2D5A47',
-      marginBottom: 6,
-    },
-    dietMacrosRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 6,
-    },
-    dietMacroPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: isDarkMode ? '#2b2b2b' : '#f5f5f5',
-      borderRadius: 999,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-    },
-    dietMacroDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      marginRight: 6,
-    },
-    dietMacroText: {
-      fontSize: 12,
-      color: isDarkMode ? '#ccc' : '#333',
-      fontWeight: '600',
-    },
-    dietCheckIcon: {
-      position: 'absolute',
-      top: 10,
-      right: 10,
-    },
-    dropdownOuter: {
-      position: 'relative',
-    },
-    dietDropdown: {
-      marginTop: 4,
-      padding: 14,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#2f2f2f' : 'rgba(50, 116, 95, 0.2)',
-      backgroundColor: isDarkMode ? '#1a1a1a' : '#fff',
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    dietDropdownOpen: {
-      borderColor: '#32745f',
-      shadowColor: '#32745f',
-      shadowOpacity: isDarkMode ? 0.3 : 0.15,
-      shadowRadius: 12,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 6,
-    },
-    dropdownSummary: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-    },
-    dropdownSubtitle: {
-      fontSize: 13,
-      color: isDarkMode ? '#bbb' : '#555',
-      marginTop: 2,
-    },
-    dropdownListContainer: {
-      marginTop: 10,
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#2f2f2f' : 'rgba(50, 116, 95, 0.15)',
-      backgroundColor: isDarkMode ? '#121212' : '#fff',
-      gap: 12,
-      padding: 12,
-    },
-    micronutrientsCard: {
-      backgroundColor: isDarkMode ? '#242424' : '#fff',
-      borderRadius: 20,
-      padding: 24,
-      marginBottom: 24,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.1)",
-      shadowColor: isDarkMode ? "#000" : "#32745f",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: isDarkMode ? 0.3 : 0.1,
-      shadowRadius: 12,
-      elevation: 5,
-    },
-    microGrid: {
-      gap: 16,
-    },
-    microItem: {
-      marginBottom: 16,
-    },
-    microHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 8,
-    },
-    microLabel: {
-      fontSize: 14,
-      color: isDarkMode ? '#E0E0E0' : '#333',
-      fontWeight: '600',
-    },
-    microProgress: {
-      fontSize: 14,
-      color: isDarkMode ? '#888' : '#666',
-    },
-    progressBarContainer: {
-      height: 8,
-      backgroundColor: isDarkMode ? '#333' : 'rgba(50, 116, 95, 0.1)',
-      borderRadius: 4,
-      overflow: 'hidden',
-    },
-    progressBar: {
-      height: '100%',
-      backgroundColor: '#32745f',
-    },
-    percentageText: {
-      fontSize: 12,
-      color: isDarkMode ? '#888' : '#666',
-      marginTop: 4,
-    },
-    sectionTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: isDarkMode ? '#E0E0E0' : '#32745f',
-      marginBottom: 16,
-    },
-    modalContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: 'rgba(0,0,0,0.5)'
-    },
-    modalContent: {
-      width: '90%',
-      backgroundColor: isDarkMode ? '#242424' : '#fff',
-      borderRadius: 20,
-      padding: 24,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#333' : 'rgba(50, 116, 95, 0.1)'
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: '800',
-      color: isDarkMode ? '#E0E0E0' : '#32745f',
-      marginBottom: 16,
-      textAlign: 'center'
-    },
-    input: {
-      backgroundColor: isDarkMode ? '#333' : '#f5f5f5',
-      borderRadius: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      color: isDarkMode ? '#E0E0E0' : '#333',
-      fontSize: 16,
-      marginBottom: 20,
-      textAlign: 'center'
-    },
-    modeToggleRow: {
-      flexDirection: 'row',
-      gap: 12,
-      marginBottom: 16,
-    },
-    modeButton: {
-      flex: 1,
-      paddingVertical: 10,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#444' : '#ddd',
-      alignItems: 'center',
-      backgroundColor: isDarkMode ? '#2b2b2b' : '#f5f5f5',
-    },
-    modeButtonActive: {
-      borderColor: '#32745f',
-      backgroundColor: isDarkMode ? 'rgba(50,116,95,0.2)' : 'rgba(50,116,95,0.15)',
-    },
-    modeButtonText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: isDarkMode ? '#E0E0E0' : '#2D5A47',
-    },
-    modeButtonTextActive: {
-      color: '#32745f',
-    },
-    modalDescription: {
-      fontSize: 14,
-      color: isDarkMode ? '#bbb' : '#555',
-      textAlign: 'center',
-    },
-    recommendationBox: {
-      backgroundColor: isDarkMode ? '#2b2b2b' : '#f4f8f6',
-      borderRadius: 16,
-      padding: 16,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#333' : 'rgba(50, 116, 95, 0.2)',
-      marginBottom: 20,
-      alignItems: 'center',
-      minHeight: 150,
-      justifyContent: 'center',
-    },
-    recommendationValue: {
-      fontSize: 32,
-      fontWeight: '800',
-      color: '#32745f',
-      marginVertical: 8,
-      textAlign: 'center',
-    },
-    recommendationDetail: {
-      fontSize: 14,
-      color: isDarkMode ? '#bbb' : '#555',
-      marginTop: 4,
-    },
-    profileButton: {
-      marginTop: 16,
-      paddingVertical: 10,
-      paddingHorizontal: 20,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: '#32745f',
-      alignItems: 'center',
-    },
-    profileButtonText: {
-      color: '#32745f',
-      fontWeight: '600',
-    },
-    errorText: {
-      color: '#f87171',
-      fontSize: 14,
-      textAlign: 'center',
-    },
-    buttonRow: {
-      flexDirection: 'row',
-      gap: 12
-    },
-    button: {
-      flex: 1,
-      paddingVertical: 12,
-      borderRadius: 12,
-      alignItems: 'center'
-    },
-    cancelButton: {
-      backgroundColor: isDarkMode ? '#444' : '#f0f0f0',
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#555' : '#ddd'
-    },
-    saveButton: {
-      backgroundColor: isDarkMode ? '#32745f' : '#32745f'
-    },
-    buttonText: {
-      fontSize: 16,
-      fontWeight: '600'
-    },
-    cancelButtonText: {
-      color: isDarkMode ? '#E0E0E0' : '#333'
-    },
-    saveButtonText: {
-      color: '#fff'
-    },
-    label: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: isDarkMode ? '#E0E0E0' : '#32745f',
-    }
-  });
+
+  const { c } = useAppTheme();
+  const styles = useStyles(dashboardStyles);
 
   const calculateAgeFromBirthday = (birthdayStr) => {
     if (!birthdayStr) return null;
@@ -814,7 +405,7 @@ export default function Dashboard() {
   };
 
   const formatDate = (date) => {
-    const options = { weekday: 'long', month: 'long', day: 'numeric' };
+    const options = { weekday: 'long', month: 'short', day: 'numeric' };
     return date.toLocaleDateString('en-US', options);
   };
 
@@ -943,358 +534,226 @@ export default function Dashboard() {
 
   // Removed profile functions - moved to UserProfile screen
 
+  const calorieGoal = userDailyValues?.dailyCalories || 2000;
+  const proteinGoal = userDailyValues?.dailyProtein || 50;
+  const carbsGoal = userDailyValues?.dailyCarbs || 275;
+  const fatGoal = userDailyValues?.dailyFat || 60;
+  const caloriesOver = remainingCalories < 0;
+  const macroLegend = [
+    { key: 'protein', label: 'Protein', color: c.protein },
+    { key: 'carbs', label: 'Carbs', color: c.carbs },
+    { key: 'fat', label: 'Fat', color: c.fat },
+  ];
+
   return (
     <>
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <Text style={styles.dateText}>{formatDate(currentDate)}</Text>
+      <Screen>
+        <FadeIn index={0} style={styles.intro}>
+          <Txt variant="overline" tone="muted">{formatDate(currentDate)}</Txt>
+          <Txt variant="h1" accessibilityRole="header">
+            {remainingCalories > 0 ? `${formatCount(remainingCalories)} cal to go` : 'Goal hit'}
+          </Txt>
+        </FadeIn>
 
-      {/* Calories Section */}
-      <View style={styles.caloriesCard}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Calories</Text>
-          <TouchableOpacity style={styles.editButton} onPress={openEditModal}>
-            <Text style={styles.editButtonText}>Edit</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.caloriesContent}>
-          <View style={styles.wheelContainer}>
-            <AnimatedProgressWheel
-              size={150}
-              width={15}
-              color="#32745f"
-              backgroundColor={isDarkMode ? '#333' : "#E8F5E9"}
-              progress={(nutritionTotals.calories / (userDailyValues?.dailyCalories || 2000)) * 100}
-              rotation="-90deg"
-              clockwise={true}
-              animateFromValue={0}
-            />
-            <View style={styles.wheelCenter}>
-              <Text style={styles.remainingText}>
-                {remainingCalories >= 0 ? remainingCalories : Math.abs(remainingCalories)}
-              </Text>
-              <Text style={styles.remainingLabel}>
-                {remainingCalories >= 0 ? 'remaining' : 'over'}
-              </Text>
+        {/* Calories hero */}
+        <FadeIn index={1}>
+          <Card>
+            <View style={styles.heroTop}>
+              <Txt variant="overline" tone="muted">Calories</Txt>
+              <IconButton name="create-outline" label="Edit calorie goal" tone="filled" size={18} onPress={openEditModal} />
             </View>
-          </View>
-
-          <View style={styles.caloriesSummary}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Goal:</Text>
-              <Text style={styles.summaryValue}>{userDailyValues?.dailyCalories || 2000} Cals</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Progress:</Text>
-              <Text style={styles.summaryValue}>{nutritionTotals.calories} Cals</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      <DashboardExtras
-        isDarkMode={isDarkMode}
-        remaining={{
-          calories: remainingCalories,
-          protein: (userDailyValues?.dailyProtein || 50) - nutritionTotals.protein,
-        }}
-      />
-
-      {/* Macros Section */}
-      <View style={styles.macrosCard}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Macros</Text>
-          <View style={styles.dietActivePill}>
-            <Text style={styles.dietActiveText}>
-              {selectedDiet ? selectedDiet.title : 'Select a diet type'}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.macrosContent}>
-          <View style={styles.macroWheel}>
-            <AnimatedProgressWheel
-              size={100}
-              width={12}
-              color="#2196F3"
-              backgroundColor={isDarkMode ? '#333' : "#E3F2FD"}
-              progress={(nutritionTotals.protein / (userDailyValues?.dailyProtein || 50)) * 100}
-              rotation="-90deg"
-              clockwise={true}
-              animateFromValue={0}
-            />
-            <View style={styles.macroCenter}>
-              <Text style={styles.macroValue}>{nutritionTotals.protein}g</Text>
-              <Text style={styles.macroLabel}>Protein</Text>
-            </View>
-            <Text style={styles.macroTotal}>{userDailyValues?.dailyProtein || 50}g total</Text>
-          </View>
-          
-          <View style={styles.macroWheel}>
-            <AnimatedProgressWheel
-              size={100}
-              width={12}
-              color="#4CAF50"
-              backgroundColor={isDarkMode ? '#333' : "#E8F5E9"}
-              progress={(nutritionTotals.carbs / (userDailyValues?.dailyCarbs || 275)) * 100}
-              rotation="-90deg"
-              clockwise={true}
-              animateFromValue={0}
-            />
-            <View style={styles.macroCenter}>
-              <Text style={styles.macroValue}>{nutritionTotals.carbs}g</Text>
-              <Text style={styles.macroLabel}>Carbs</Text>
-            </View>
-            <Text style={styles.macroTotal}>{userDailyValues?.dailyCarbs || 275}g total</Text>
-          </View>
-
-          <View style={styles.macroWheel}>
-            <AnimatedProgressWheel
-              size={100}
-              width={12}
-              color="#FF9800"
-              backgroundColor={isDarkMode ? '#333' : "#FFF3E0"}
-              progress={(nutritionTotals.fat / (userDailyValues?.dailyFat || 60)) * 100}
-              rotation="-90deg"
-              clockwise={true}
-              animateFromValue={0}
-            />
-            <View style={styles.macroCenter}>
-              <Text style={styles.macroValue}>{nutritionTotals.fat}g</Text>
-              <Text style={styles.macroLabel}>Fat</Text>
-            </View>
-            <Text style={styles.macroTotal}>{userDailyValues?.dailyFat || 60}g total</Text>
-          </View>
-        </View>
-
-        <Text style={styles.dietSectionTitle}>Diet Type</Text>
-        <View style={styles.dropdownOuter}>
-          <TouchableOpacity
-            style={[styles.dietDropdown, dropdownOpen && styles.dietDropdownOpen]}
-            activeOpacity={0.9}
-            onPress={() => setDropdownOpen(prev => !prev)}
-          >
-            <View style={styles.dropdownSummary}>
-              {selectedDiet ? (
-                <>
-                  <DietPieChart carbs={selectedDiet.caloriesSplit.carbs} protein={selectedDiet.caloriesSplit.protein} fat={selectedDiet.caloriesSplit.fat} size={48} strokeWidth={10} />
-                  <View style={{ marginLeft: 14 }}>
-                    <Text style={styles.dietTitle}>{selectedDiet.title}</Text>
-                    <Text style={styles.dropdownSubtitle}>
-                      {selectedDiet.caloriesSplit.carbs}% C / {selectedDiet.caloriesSplit.protein}% P / {selectedDiet.caloriesSplit.fat}% F
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <Text style={styles.dietTitle}>Select a diet type</Text>
-              )}
-            </View>
-            <MaterialIcons
-              name={dropdownOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
-              size={24}
-              color={isDarkMode ? '#E0E0E0' : '#2D5A47'}
-            />
-          </TouchableOpacity>
-          {dropdownOpen && (
-            <View style={styles.dropdownListContainer}>
-              {DIET_TYPES.map(diet => {
-                const isSelected = diet.key === selectedDietType;
-                return (
-                  <TouchableOpacity
-                    key={diet.key}
-                    style={[styles.dietCard, isSelected && styles.dietCardSelected]}
-                    activeOpacity={0.9}
-                    onPress={() => handleDietSelect(diet.key)}
-                  >
-                    <View style={styles.dietChartWrapper}>
-                      <DietPieChart carbs={diet.caloriesSplit.carbs} protein={diet.caloriesSplit.protein} fat={diet.caloriesSplit.fat} />
-                    </View>
-                    <View style={styles.dietInfo}>
-                      <Text style={styles.dietTitle}>{diet.title}</Text>
-                      <View style={styles.dietMacrosRow}>
-                        <View style={styles.dietMacroPill}>
-                          <View style={[styles.dietMacroDot, { backgroundColor: MACRO_COLORS.carbs }]} />
-                          <Text style={styles.dietMacroText}>Carbs {diet.caloriesSplit.carbs}%</Text>
-                        </View>
-                        <View style={styles.dietMacroPill}>
-                          <View style={[styles.dietMacroDot, { backgroundColor: MACRO_COLORS.protein }]} />
-                          <Text style={styles.dietMacroText}>Protein {diet.caloriesSplit.protein}%</Text>
-                        </View>
-                        <View style={styles.dietMacroPill}>
-                          <View style={[styles.dietMacroDot, { backgroundColor: MACRO_COLORS.fat }]} />
-                          <Text style={styles.dietMacroText}>Fat {diet.caloriesSplit.fat}%</Text>
-                        </View>
-                      </View>
-                    </View>
-                    {isSelected && (
-                      <MaterialIcons name="check-circle" size={22} color="#32745f" style={styles.dietCheckIcon} />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      </View>
-
-      {/* Micronutrients Section */}
-      <View style={styles.micronutrientsCard}>
-        <Text style={styles.sectionTitle}>Micronutrients</Text>
-        <View style={styles.microGrid}>
-          {Object.entries(recommendedDailyValues).map(([nutrient, recommendedValue]) => {
-            const currentValue = nutritionTotals[nutrient] || 0;
-            const percentage = Math.round((currentValue / recommendedValue) * 100);
-            const nutrientLabel = formatNutrientValue(nutrient, currentValue);
-            const percentLabel = formatPercentOfDailyValue(nutrient, currentValue);
-            
-            return (
-              <View key={nutrient} style={styles.microItem}>
-                <View style={styles.microHeader}>
-                  <Text style={styles.microLabel}>
-                    {nutrient.split('_')
-                      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                      .join(' ')}
-                  </Text>
-                  <Text style={styles.microProgress}>
-                    {nutrientLabel} / {formatNutrientValue(nutrient, recommendedValue)}
-                  </Text>
+            <View style={styles.heroBody}>
+              <MacroRing progress={nutritionTotals.calories / calorieGoal} size={168} stroke={12} color={caloriesOver ? c.accent : c.ink}>
+                <View
+                  style={styles.ringCenter}
+                  accessible
+                  accessibilityLabel={`${formatCount(remainingCalories)} calories ${caloriesOver ? 'over' : 'left'}`}
+                >
+                  <NumberTicker value={Math.abs(remainingCalories)} variant="display" />
+                  <Txt variant="caption" tone="muted">{caloriesOver ? 'cal over' : 'cal left'}</Txt>
                 </View>
-                
-                <View style={styles.progressBarContainer}>
-                  <View 
-                    style={[
-                      styles.progressBar, 
-                      { 
-                        width: `${Math.min(percentage, 100)}%`,
-                        backgroundColor: '#32745f'
-                      }
-                    ]} 
-                  />
+              </MacroRing>
+              <View style={styles.heroStats}>
+                <View style={styles.stat}>
+                  <NumberTicker value={nutritionTotals.calories} />
+                  <Txt variant="caption" tone="muted">eaten</Txt>
                 </View>
-                
-                <Text style={[
-                  styles.percentageText,
-                  { color: isDarkMode ? '#E0E0E0' : '#32745f' }
-                ]}>
-                  {percentLabel || `${percentage}% Recommended Daily Value`}
-                </Text>
+                <Divider />
+                <View style={styles.stat}>
+                  <Txt variant="number" style={{ fontVariant: ['tabular-nums'] }}>{formatCount(calorieGoal)}</Txt>
+                  <Txt variant="caption" tone="muted">daily goal</Txt>
+                </View>
               </View>
+            </View>
+          </Card>
+        </FadeIn>
+
+        {/* Macros */}
+        <FadeIn index={2}>
+          <Card>
+            <View style={styles.macrosHeader}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Txt variant="title">Macros</Txt>
+                <Txt variant="caption" tone="muted" numberOfLines={1}>
+                  {selectedDiet ? splitLabel(selectedDiet.caloriesSplit) : 'Pick a diet type to set targets'}
+                </Txt>
+              </View>
+              <Chip
+                label={selectedDiet ? selectedDiet.title : 'Diet type'}
+                icon="options-outline"
+                active={dropdownOpen}
+                onPress={() => setDropdownOpen(prev => !prev)}
+              />
+            </View>
+            <View style={styles.macroRow}>
+              <MacroStat label="Protein" eaten={nutritionTotals.protein} goal={proteinGoal} color={c.protein} />
+              <MacroStat label="Carbs" eaten={nutritionTotals.carbs} goal={carbsGoal} color={c.carbs} />
+              <MacroStat label="Fat" eaten={nutritionTotals.fat} goal={fatGoal} color={c.fat} />
+            </View>
+          </Card>
+        </FadeIn>
+
+        <DashboardExtras
+          isDarkMode={isDarkMode}
+          remaining={{
+            calories: remainingCalories,
+            protein: proteinGoal - nutritionTotals.protein,
+          }}
+        />
+
+        {/* Micronutrients */}
+        <FadeIn index={7}>
+          <Card>
+            <View style={{ gap: 2, marginBottom: space.xs }}>
+              <Txt variant="title">Micronutrients</Txt>
+              <Txt variant="caption" tone="muted">Today's totals against the daily value</Txt>
+            </View>
+            {Object.entries(recommendedDailyValues).map(([nutrient, recommendedValue]) => {
+              const currentValue = nutritionTotals[nutrient] || 0;
+              const percentage = Math.round((currentValue / recommendedValue) * 100);
+              const nutrientLabel = formatNutrientValue(nutrient, currentValue);
+              const percentLabel = formatPercentOfDailyValue(nutrient, currentValue);
+
+              return (
+                <View
+                  key={nutrient}
+                  style={styles.microRow}
+                  accessible
+                  accessibilityLabel={`${prettyNutrient(nutrient)}: ${nutrientLabel} of ${formatNutrientValue(nutrient, recommendedValue)}, ${percentLabel || `${percentage}% of daily value`}`}
+                >
+                  <View style={styles.microTop}>
+                    <Txt variant="small" style={{ fontFamily: type.bodyStrong.fontFamily }}>{prettyNutrient(nutrient)}</Txt>
+                    <Txt variant="caption" tone="muted" style={{ fontVariant: ['tabular-nums'] }}>
+                      {nutrientLabel} / {formatNutrientValue(nutrient, recommendedValue)}
+                    </Txt>
+                  </View>
+                  <View style={styles.microBar}>
+                    <ProgressBar value={percentage / 100} color={c.ink} style={{ flex: 1 }} />
+                    <Txt variant="caption" style={{ minWidth: 56, textAlign: 'right', fontFamily: type.bodyStrong.fontFamily, fontVariant: ['tabular-nums'] }}>
+                      {percentLabel || `${percentage}% DV`}
+                    </Txt>
+                  </View>
+                </View>
+              );
+            })}
+          </Card>
+        </FadeIn>
+      </Screen>
+
+      {/* Edit calorie goal */}
+      <Sheet visible={editVisible} onClose={closeEditModal} overline="Daily goal" title="Calorie goal">
+        <Segmented
+          options={[
+            { label: 'Manual entry', value: 'manual' },
+            { label: 'From my profile', value: 'personal' },
+          ]}
+          value={calorieMode}
+          onChange={handleCalorieModeChange}
+        />
+
+        {calorieMode === 'manual' ? (
+          <TextField
+            label="Daily calories"
+            icon="flame-outline"
+            value={calorieInput}
+            onChangeText={setCalorieInput}
+            keyboardType="numeric"
+            placeholder="Enter daily calories"
+            returnKeyType="done"
+            hint="Protein, carb and fat targets follow your diet type."
+          />
+        ) : (
+          <Card tone="sunken" style={styles.recommendation}>
+            {calorieCalcError ? (
+              <>
+                <Ionicons name="person-circle-outline" size={32} color={c.muted} />
+                <Txt variant="small" tone="accent" style={{ textAlign: 'center' }}>{calorieCalcError}</Txt>
+                <Button title="Adjust profile" variant="ghost" size="sm" icon="arrow-forward" onPress={goToProfileScreen} />
+              </>
+            ) : (
+              <>
+                <Txt variant="caption" tone="muted">Based on your profile, we recommend</Txt>
+                <Txt variant="h1" style={{ textAlign: 'center' }}>
+                  {calorieAutoValue ? `${calorieAutoValue.toLocaleString('en-US')} cal/day` : '—'}
+                </Txt>
+                <Txt variant="caption" tone="muted" style={{ textAlign: 'center' }}>
+                  Activity: {profileData?.activity_level || 'Not set'}
+                </Txt>
+                <Txt variant="caption" tone="muted" style={{ textAlign: 'center' }}>
+                  Goal: {profileData?.weight_goal || 'Not set'}
+                </Txt>
+                <Button title="Adjust profile" variant="ghost" size="sm" icon="arrow-forward" onPress={goToProfileScreen} />
+              </>
+            )}
+          </Card>
+        )}
+
+        <View style={{ gap: space.xs }}>
+          <Button title="Save goal" size="lg" onPress={saveCalorieGoal} />
+          <Button title="Cancel" variant="ghost" onPress={closeEditModal} />
+        </View>
+      </Sheet>
+
+      {/* Diet type */}
+      <Sheet visible={dropdownOpen} onClose={() => setDropdownOpen(false)} overline="Macro targets" title="Diet type">
+        <View style={{ flexDirection: 'row', gap: space.lg }}>
+          {macroLegend.map((item) => (
+            <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: item.color }} />
+              <Txt variant="caption" tone="muted">{item.label}</Txt>
+            </View>
+          ))}
+        </View>
+        <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ gap: space.xs }} showsVerticalScrollIndicator={false}>
+          {DIET_TYPES.map(diet => {
+            const isSelected = diet.key === selectedDietType;
+            return (
+              <Tap
+                key={diet.key}
+                onPress={() => handleDietSelect(diet.key)}
+                scaleTo={0.985}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+                accessibilityLabel={`${diet.title}, ${diet.caloriesSplit.protein}% protein, ${diet.caloriesSplit.carbs}% carbs, ${diet.caloriesSplit.fat}% fat`}
+                style={[styles.dietOption, { backgroundColor: isSelected ? c.sunken : 'transparent' }]}
+              >
+                <View style={{ flex: 1, gap: space.sm }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.sm }}>
+                    <Txt variant="bodyStrong">{diet.title}</Txt>
+                    <Txt variant="caption" tone="muted" style={{ fontVariant: ['tabular-nums'] }}>{splitLabel(diet.caloriesSplit)}</Txt>
+                  </View>
+                  <DietSplitBar split={diet.caloriesSplit} />
+                </View>
+                <Ionicons
+                  name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={24}
+                  color={isSelected ? c.ink : c.faint}
+                />
+              </Tap>
             );
           })}
-        </View>
-        </View>
-      </ScrollView>
-
-      {/* Edit Calorie Goal Modal */}
-      <Modal visible={editVisible} transparent animationType="fade" onRequestClose={closeEditModal}>
-        <TouchableWithoutFeedback onPress={closeEditModal}>
-          <View style={styles.modalContainer}>
-            <TouchableWithoutFeedback>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>Set Calorie Goal</Text>
-                <View style={styles.modeToggleRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.modeButton,
-                      calorieMode === 'manual' && styles.modeButtonActive
-                    ]}
-                    onPress={() => handleCalorieModeChange('manual')}
-                  >
-                    <Text
-                      style={[
-                        styles.modeButtonText,
-                        calorieMode === 'manual' && styles.modeButtonTextActive
-                      ]}
-                    >
-                      Manual entry
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.modeButton,
-                      calorieMode === 'personal' && styles.modeButtonActive
-                    ]}
-                    onPress={() => handleCalorieModeChange('personal')}
-                  >
-                    <Text
-                      style={[
-                        styles.modeButtonText,
-                        calorieMode === 'personal' && styles.modeButtonTextActive
-                      ]}
-                    >
-                      Use personal data
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {calorieMode === 'manual' ? (
-                  <TextInput
-                    style={styles.input}
-                    value={calorieInput}
-                    onChangeText={setCalorieInput}
-                    keyboardType="numeric"
-                    placeholder="Enter daily calories"
-                    placeholderTextColor={isDarkMode ? '#888' : '#999'}
-                    returnKeyType="done"
-                  />
-                ) : (
-                  <View style={styles.recommendationBox}>
-                    {calorieCalcError ? (
-                      <>
-                        <Text style={styles.errorText}>{calorieCalcError}</Text>
-                        <TouchableOpacity 
-                          style={styles.profileButton} 
-                          onPress={goToProfileScreen}
-                        >
-                          <Text style={styles.profileButtonText}>Adjust profile</Text>
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      <>
-                        <Text style={styles.modalDescription}>
-                          Based on your profile, we recommend
-                        </Text>
-                        <Text style={styles.recommendationValue}>
-                          {calorieAutoValue ? `${calorieAutoValue} cals/day` : '—'}
-                        </Text>
-                        <Text style={styles.recommendationDetail}>
-                          Activity: {profileData?.activity_level || 'Not set'}
-                        </Text>
-                        <Text style={styles.recommendationDetail}>
-                          Goal: {profileData?.weight_goal || 'Not set'}
-                        </Text>
-                        <TouchableOpacity 
-                          style={styles.profileButton} 
-                          onPress={goToProfileScreen}
-                        >
-                          <Text style={styles.profileButtonText}>Adjust profile</Text>
-                        </TouchableOpacity>
-                      </>
-                    )}
-                  </View>
-                )}
-                
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity 
-                    style={[styles.button, styles.cancelButton]} 
-                    onPress={closeEditModal}
-                  >
-                    <Text style={[styles.buttonText, styles.cancelButtonText]}>Cancel</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.button, styles.saveButton]} 
-                    onPress={saveCalorieGoal}
-                  >
-                    <Text style={[styles.buttonText, styles.saveButtonText]}>Save</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* Removed Profile Modal - moved to UserProfile screen */}
+        </ScrollView>
+      </Sheet>
     </>
   );
 }

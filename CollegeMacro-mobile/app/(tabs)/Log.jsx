@@ -1,183 +1,41 @@
+// Food log: today's entries grouped by meal, with serving steppers.
 import React, { useState, useCallback, useEffect } from "react";
-import { View, Text, StyleSheet, SectionList, TouchableOpacity, TextInput, Alert } from "react-native";
+import { View, TextInput, Alert, Platform, Pressable } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from "../../utils/config";
-import AnimatedProgressWheel from "react-native-progress-wheel";
-import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTheme } from '../../context/ThemeContext';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { radius, space, type, useAppTheme, useStyles } from '../../theme';
+import { Card, EmptyState, FadeIn, IconButton, Screen, Tap, Txt } from '../../components/kit';
+
+const formatCount = (n) => Math.round(n || 0).toLocaleString('en-US');
+
+const logStyles = (c) => ({
+  intro: { gap: space.xs, paddingTop: space.sm },
+  summary: { flexDirection: 'row', paddingVertical: space.lg + 4, paddingHorizontal: space.sm },
+  summaryItem: { flex: 1, alignItems: 'center', gap: 2 },
+  summaryLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  meal: { gap: space.sm },
+  mealHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: space.xs },
+  entries: { paddingVertical: space.sm },
+  entry: { paddingHorizontal: space.lg + 4, paddingVertical: space.md, gap: space.sm },
+  entryTop: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  entryBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
+  stepper: { flexDirection: 'row', alignItems: 'center', height: 44, borderRadius: radius.pill, backgroundColor: c.sunken },
+  stepButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  stepInput: { ...type.bodyStrong, width: 36, padding: 0, textAlign: 'center', color: c.ink, fontVariant: ['tabular-nums'], outlineStyle: 'none' },
+  clear: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: space.sm, height: 44, paddingHorizontal: space.lg, borderRadius: radius.pill },
+});
 
 export default function Log() {
+  const navigation = useNavigation();
   const [logItems, setLogItems] = useState([]);
   const [userDailyValues, setUserDailyValues] = useState(null);
   const { isDarkMode } = useTheme();
   const [editingServing, setEditingServing] = useState(null);
-
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: isDarkMode ? '#121212' : "#f5f7fa",
-      padding: 20,
-    },
-    listContainer: {
-      flex: 1,
-      marginTop: 40,
-    },
-    title: {
-      fontSize: 28,
-      fontWeight: "800",
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      marginBottom: 24,
-      marginTop: 12,
-    },
-    logItem: {
-      backgroundColor: isDarkMode ? '#242424' : "#fff",
-      borderRadius: 20,
-      padding: 16,
-      marginVertical: 8,
-      borderWidth: 1,
-      borderColor: isDarkMode ? '#333' : "rgba(50, 116, 95, 0.1)",
-      shadowColor: isDarkMode ? "#000" : "#32745f",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: isDarkMode ? 0.3 : 0.1,
-      shadowRadius: 12,
-      elevation: 5,
-    },
-    foodDetails: {
-      flex: 1,
-    },
-    foodName: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: isDarkMode ? '#E0E0E0' : '#32745f',
-      flex: 1,
-      marginRight: 16,
-    },
-    servingInfo: {
-      fontSize: 14,
-      color: isDarkMode ? '#888' : "#666",
-    },
-    nutritionInfo: {
-      flexDirection: 'row',
-      justifyContent: 'flex-start',
-      gap: 12,
-      marginTop: 8,
-    },
-    nutritionText: {
-      fontSize: 12,
-      color: isDarkMode ? '#888' : "#666",
-    },
-    buttonContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    iconButton: {
-      padding: 8,
-      borderRadius: 8,
-      backgroundColor: isDarkMode ? 'rgba(224, 224, 224, 0.1)' : "rgba(50, 116, 95, 0.1)",
-    },
-    servingAdjust: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-    },
-    servingText: {
-      fontSize: 16,
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      fontWeight: '600',
-      minWidth: 30,
-      textAlign: 'center',
-      padding: 0,
-    },
-    mealLabel: {
-      position: 'absolute',
-      top: -10,
-      left: 16,
-      backgroundColor: isDarkMode ? '#333' : '#32745f',
-      paddingHorizontal: 12,
-      paddingVertical: 4,
-      borderRadius: 12,
-      zIndex: 1,
-    },
-    mealText: {
-      color: '#fff',
-      fontSize: 12,
-      fontWeight: '600',
-    },
-    itemHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: 12,
-    },
-    controls: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    nutritionGrid: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      marginTop: 8,
-    },
-    nutritionItem: {
-      alignItems: 'center',
-    },
-    nutritionValue: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: isDarkMode ? '#E0E0E0' : '#32745f',
-    },
-    nutritionLabel: {
-      fontSize: 12,
-      color: isDarkMode ? '#888' : '#666',
-      marginTop: 2,
-    },
-    sectionHeader: {
-      paddingHorizontal: 20,
-      paddingVertical: 8,
-      backgroundColor: isDarkMode ? '#121212' : '#f5f7fa',
-    },
-    sectionHeaderText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: isDarkMode ? '#888' : '#666',
-      textTransform: 'uppercase',
-      letterSpacing: 1,
-    },
-    sectionDivider: {
-      height: 1,
-      backgroundColor: isDarkMode ? '#333' : 'rgba(50, 116, 95, 0.1)',
-      marginTop: 8,
-    },
-    clearButton: {
-      position: 'absolute',
-      top: 10,
-      right: 20,
-      zIndex: 10,
-      padding: 8,
-      borderRadius: 8,
-      backgroundColor: isDarkMode ? 'rgba(224, 224, 224, 0.1)' : "rgba(50, 116, 95, 0.1)",
-    },
-    clearButtonText: {
-      color: isDarkMode ? '#E0E0E0' : "#32745f",
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: 40,
-    },
-    emptyText: {
-      fontSize: 16,
-      color: isDarkMode ? '#888' : '#666',
-      textAlign: 'center',
-      lineHeight: 24,
-    },
-  });
+  const { c } = useAppTheme();
+  const styles = useStyles(logStyles);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -302,107 +160,188 @@ export default function Log() {
     }
   };
 
+  // Asks before wiping the log (Alert has no buttons on web, so use confirm there).
+  const confirmClearLog = () => {
+    const title = "Clear today's log?";
+    const message = 'This removes every item you logged today.';
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`${title}\n${message}`)) clearLog();
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Clear', style: 'destructive', onPress: clearLog },
+    ]);
+  };
+
+  const totals = logItems.reduce(
+    (acc, item) => {
+      const facts = item.nutrition_facts || {};
+      acc.calories += Number(facts.calories) || 0;
+      acc.protein += Number(facts.protein) || 0;
+      acc.carbs += Number(facts.total_carbohydrate) || 0;
+      acc.fat += Number(facts.total_fat) || 0;
+      return acc;
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+
+  const summary = [
+    { key: 'calories', value: formatCount(totals.calories), label: 'cal' },
+    { key: 'protein', value: `${formatCount(totals.protein)}g`, label: 'protein', color: c.protein },
+    { key: 'carbs', value: `${formatCount(totals.carbs)}g`, label: 'carbs', color: c.carbs },
+    { key: 'fat', value: `${formatCount(totals.fat)}g`, label: 'fat', color: c.fat },
+  ];
+
+  const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const calorieGoal = userDailyValues?.dailyCalories;
+
+  const header = (
+    <FadeIn index={0} style={styles.intro}>
+      <Txt variant="overline" tone="muted">
+        {logItems.length > 0 ? `${logItems.length} ${logItems.length === 1 ? 'item' : 'items'} logged` : 'Food log'}
+      </Txt>
+      <Txt variant="h1" accessibilityRole="header">{todayLabel}</Txt>
+    </FadeIn>
+  );
+
+  if (logItems.length === 0) {
+    return (
+      <Screen>
+        {header}
+        <FadeIn index={1}>
+          <Card padded={false}>
+            <EmptyState
+              icon="restaurant-outline"
+              title="Nothing logged yet"
+              body="Add dishes from today's dining hall menus to track your calories and macros."
+              action="Browse menus"
+              onAction={() => navigation.navigate('AddFood')}
+            />
+          </Card>
+        </FadeIn>
+      </Screen>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      {logItems.length > 0 && (
-        <TouchableOpacity 
-          style={styles.clearButton}
-          onPress={clearLog}
-        >
-          <Text style={styles.clearButtonText}>Clear</Text>
-        </TouchableOpacity>
-      )}
-      
-      {logItems.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            Your food log is empty.{'\n'}
-            Add items from the AddFood tab to start tracking!
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.listContainer}>
-          <SectionList
-            sections={sections}
-            keyExtractor={(item, index) => `${item.name}-${index}`}
-            renderSectionHeader={({ section: { title } }) => (
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionHeaderText}>{title}</Text>
-                <View style={styles.sectionDivider} />
+    <Screen>
+      {header}
+
+      {/* Totals */}
+      <FadeIn index={1}>
+        <Card padded={false}>
+          <View style={styles.summary}>
+          {summary.map((item) => (
+            <View key={item.key} style={styles.summaryItem} accessible accessibilityLabel={`${item.value} ${item.label}`}>
+              <Txt variant="number" style={{ fontVariant: ['tabular-nums'] }}>{item.value}</Txt>
+              <View style={styles.summaryLabel}>
+                {item.color ? <View style={[styles.dot, { backgroundColor: item.color }]} /> : null}
+                <Txt variant="caption" tone="muted">{item.label}</Txt>
               </View>
-            )}
-            renderItem={({ item }) => (
-              <View style={styles.logItem}>
-                <View style={styles.foodDetails}>
-                  <View style={styles.itemHeader}>
-                    <Text style={styles.foodName} numberOfLines={2}>
+            </View>
+          ))}
+          </View>
+        </Card>
+        {calorieGoal ? (
+          <Txt variant="caption" tone="muted" style={{ textAlign: 'center', marginTop: space.sm }}>
+            {formatCount(totals.calories)} of {formatCount(calorieGoal)} cal goal
+          </Txt>
+        ) : null}
+      </FadeIn>
+
+      {/* Entries by meal */}
+      {sections.map((section, sectionIndex) => {
+        const mealCalories = section.data.reduce((sum, item) => sum + (Number(item.nutrition_facts?.calories) || 0), 0);
+        return (
+          <FadeIn key={section.title} index={sectionIndex + 2} style={styles.meal}>
+            <View style={styles.mealHeader}>
+              <Txt variant="overline" tone="muted" accessibilityRole="header">{section.title}</Txt>
+              <Txt variant="caption" tone="muted" style={{ fontVariant: ['tabular-nums'] }}>{formatCount(mealCalories)} cal</Txt>
+            </View>
+            <Card padded={false}>
+              <View style={styles.entries}>
+              {section.data.map((item, index) => (
+                <View key={`${item.name}-${index}`} style={styles.entry}>
+                  <View style={styles.entryTop}>
+                    <Txt variant="bodyStrong" numberOfLines={2} style={{ flex: 1, paddingTop: space.sm + 2 }}>
                       {item.name}
-                    </Text>
-                    <View style={styles.controls}>
-                      <View style={styles.servingAdjust}>
-                        <TouchableOpacity 
-                          style={styles.iconButton}
-                          onPress={() => {
-                            if (item.servings - 1 <= 0) {
+                    </Txt>
+                    <IconButton
+                      name="trash-outline"
+                      size={19}
+                      color={c.muted}
+                      label={`Remove ${item.name}`}
+                      onPress={() => removeItem(item.name)}
+                      style={{ marginRight: -space.sm }}
+                    />
+                  </View>
+                  <View style={styles.entryBottom}>
+                    <Txt variant="caption" tone="muted" style={{ flex: 1, fontVariant: ['tabular-nums'] }}>
+                      {Math.round(item.nutrition_facts.calories)} cal · {Math.round(item.nutrition_facts.protein)}g protein · {Math.round(item.nutrition_facts.total_carbohydrate)}g carbs · {Math.round(item.nutrition_facts.total_fat)}g fat
+                    </Txt>
+                    <View style={styles.stepper}>
+                      <Pressable
+                        style={styles.stepButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={item.servings - 1 <= 0 ? `Remove ${item.name}` : `Decrease servings of ${item.name}`}
+                        onPress={() => {
+                          if (item.servings - 1 <= 0) {
+                            removeItem(item.name);
+                          } else {
+                            updateServings(item.name, item.servings - 1);
+                          }
+                        }}
+                      >
+                        <Ionicons name="remove" size={18} color={c.ink} />
+                      </Pressable>
+
+                      <TextInput
+                        style={styles.stepInput}
+                        value={editingServing?.name === item.name ? editingServing.value : String(item.servings ?? 1)}
+                        keyboardType="numeric"
+                        accessibilityLabel={`Servings of ${item.name}`}
+                        selectTextOnFocus
+                        onChangeText={(text) => {
+                          setEditingServing({ name: item.name, value: text });
+                        }}
+                        onBlur={() => {
+                          if (editingServing) {
+                            const newServings = parseFloat(editingServing.value) || 0;
+                            if (newServings === 0) {
                               removeItem(item.name);
                             } else {
-                              updateServings(item.name, item.servings - 1);
+                              updateServings(item.name, newServings);
                             }
-                          }}
-                        >
-                          <Icon name="remove" size={20} color={isDarkMode ? '#E0E0E0' : "#32745f"} />
-                        </TouchableOpacity>
-                        
-                        <TextInput
-                          style={styles.servingText}
-                          value={editingServing?.name === item.name ? editingServing.value : item.servings.toString()}
-                          keyboardType="numeric"
-                          onChangeText={(text) => {
-                            setEditingServing({ name: item.name, value: text });
-                          }}
-                          onBlur={() => {
-                            if (editingServing) {
-                              const newServings = parseFloat(editingServing.value) || 0;
-                              if (newServings === 0) {
-                                removeItem(item.name);
-                              } else {
-                                updateServings(item.name, newServings);
-                              }
-                              setEditingServing(null);
-                            }
-                          }}
-                        />
-                        
-                        <TouchableOpacity 
-                          style={styles.iconButton}
-                          onPress={() => updateServings(item.name, item.servings + 1)}
-                        >
-                          <Icon name="add" size={20} color={isDarkMode ? '#E0E0E0' : "#32745f"} />
-                        </TouchableOpacity>
-                      </View>
-                      
-                      <TouchableOpacity 
-                        style={styles.iconButton}
-                        onPress={() => removeItem(item.name)}
+                            setEditingServing(null);
+                          }
+                        }}
+                      />
+
+                      <Pressable
+                        style={styles.stepButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Increase servings of ${item.name}`}
+                        onPress={() => updateServings(item.name, item.servings + 1)}
                       >
-                        <Icon name="delete-outline" size={20} color={isDarkMode ? '#E0E0E0' : "#32745f"} />
-                      </TouchableOpacity>
+                        <Ionicons name="add" size={18} color={c.ink} />
+                      </Pressable>
                     </View>
                   </View>
-                  
-                  <View style={styles.nutritionInfo}>
-                    <Text style={styles.nutritionText}>{Math.round(item.nutrition_facts.calories)} cal</Text>
-                    <Text style={styles.nutritionText}>{Math.round(item.nutrition_facts.protein)}g protein</Text>
-                    <Text style={styles.nutritionText}>{Math.round(item.nutrition_facts.total_carbohydrate)}g carbs</Text>
-                    <Text style={styles.nutritionText}>{Math.round(item.nutrition_facts.total_fat)}g fat</Text>
-                  </View>
                 </View>
+              ))}
               </View>
-            )}
-            stickySectionHeadersEnabled={false}
-          />
-        </View>
-      )}
-    </View>
+            </Card>
+          </FadeIn>
+        );
+      })}
+
+      <FadeIn index={sections.length + 2}>
+        <Tap onPress={confirmClearLog} accessibilityRole="button" accessibilityLabel="Clear today's log" style={styles.clear}>
+          <Ionicons name="trash-outline" size={16} color={c.accent} />
+          <Txt variant="small" tone="accent" style={{ fontFamily: type.bodyStrong.fontFamily }}>Clear log</Txt>
+        </Tap>
+      </FadeIn>
+    </Screen>
   );
 }
