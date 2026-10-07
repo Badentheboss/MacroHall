@@ -7,7 +7,9 @@ import {
   ViewStyle,
   TouchableOpacity,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
+import { palettes, type } from "../theme/tokens";
+import { useAppTheme } from "../theme";
 
 type PrivacyPolicyProps = {
   isDarkMode?: boolean;
@@ -31,13 +33,13 @@ const BulletList: React.FC<BulletListProps> = ({ items, styles }) => (
   </View>
 );
 
-const createStyles = (isDarkMode: boolean) =>
+type Palette = typeof palettes.light;
+
+const createStyles = (c: Palette) =>
   StyleSheet.create({
     container: {
-      borderWidth: 1,
-      borderColor: isDarkMode ? "#333" : "rgba(50, 116, 95, 0.2)",
-      borderRadius: 16,
-      backgroundColor: isDarkMode ? "#1E1E1E" : "#FFFFFF",
+      borderRadius: 24,
+      backgroundColor: c.surface,
     },
     header: {
       flexDirection: "row",
@@ -49,15 +51,8 @@ const createStyles = (isDarkMode: boolean) =>
     headerLeft: {
       flex: 1,
     },
-    title: {
-      fontSize: 20,
-      fontWeight: "700",
-      color: isDarkMode ? "#E0E0E0" : "#32745f",
-    },
-    updated: {
-      fontSize: 14,
-      color: isDarkMode ? "#B0B0B0" : "#4F4F4F",
-    },
+    title: { ...type.h2, color: c.ink },
+    updated: { ...type.caption, color: c.muted, marginTop: 2 },
     content: {
       paddingHorizontal: 20,
       paddingBottom: 20,
@@ -65,25 +60,9 @@ const createStyles = (isDarkMode: boolean) =>
     section: {
       marginBottom: 16,
     },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: isDarkMode ? "#E0E0E0" : "#32745f",
-      marginBottom: 6,
-    },
-    subheading: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: isDarkMode ? "#E0E0E0" : "#333333",
-      marginTop: 8,
-      marginBottom: 4,
-    },
-    body: {
-      fontSize: 14,
-      lineHeight: 20,
-      color: isDarkMode ? "#CFCFCF" : "#444444",
-      flexShrink: 1,
-    },
+    sectionTitle: { ...type.title, color: c.ink, marginBottom: 4 },
+    subheading: { ...type.bodyStrong, fontSize: 15, color: c.ink, marginTop: 8, marginBottom: 4 },
+    body: { ...type.small, color: c.muted, flexShrink: 1 },
     list: {
       marginTop: 4,
       marginBottom: 4,
@@ -93,25 +72,17 @@ const createStyles = (isDarkMode: boolean) =>
       alignItems: "flex-start",
       marginBottom: 4,
     },
-    bullet: {
-      width: 16,
-      fontSize: 14,
-      color: isDarkMode ? "#CFCFCF" : "#444444",
-      lineHeight: 20,
-    },
-    contact: {
-      fontSize: 14,
-      lineHeight: 20,
-      color: isDarkMode ? "#CFCFCF" : "#444444",
-    },
+    bullet: { ...type.small, width: 16, color: c.muted },
+    contact: { ...type.small, color: c.muted },
   });
 
+// isDarkMode is still accepted for older callers; colors come from the theme.
 const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({
-  isDarkMode = false,
   style,
   defaultExpanded = false,
 }) => {
-  const styles = useMemo(() => createStyles(isDarkMode), [isDarkMode]);
+  const { c } = useAppTheme();
+  const styles = useMemo(() => createStyles(c), [c]);
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   return (
@@ -120,16 +91,14 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({
         style={styles.header}
         activeOpacity={0.8}
         onPress={() => setExpanded((prev) => !prev)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
       >
         <View style={styles.headerLeft}>
-          <Text style={styles.title}>Privacy Policy for NutriNav</Text>
+          <Text style={styles.title}>Privacy Policy for MacroHall</Text>
           <Text style={styles.updated}>Last Updated: October 29, 2025</Text>
         </View>
-        <MaterialIcons
-          name={expanded ? "expand-less" : "expand-more"}
-          size={24}
-          color={isDarkMode ? "#E0E0E0" : "#32745f"}
-        />
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={20} color={c.ink} />
       </TouchableOpacity>
 
       {expanded && (
@@ -137,7 +106,7 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>1. Information We Collect</Text>
             <Text style={styles.body}>
-              When you create an account or use NutriNav, we may collect the
+              When you create an account or use MacroHall, we may collect the
               following types of information:
             </Text>
             <Text style={styles.subheading}>Personal Information</Text>
@@ -185,7 +154,7 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({
                 "Provide personalized nutrition recommendations",
                 "Save your dietary preferences and progress",
                 "Maintain your account and login functionality",
-                "Improve core features of the NutriNav app",
+                "Improve core features of the MacroHall app",
                 "Communicate with you regarding account-related matters",
               ]}
               styles={styles}
@@ -209,7 +178,7 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>4. Children’s Privacy</Text>
             <Text style={styles.body}>
-              NutriNav is not intended for users under the age of 13. We do not
+              MacroHall is not intended for users under the age of 13. We do not
               knowingly collect information from children below this age threshold.
             </Text>
           </View>
@@ -219,7 +188,7 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({
               5. Account Deletion and Data Removal
             </Text>
             <Text style={styles.body}>
-              Users can delete their accounts directly within the NutriNav app. When
+              Users can delete their accounts directly within the MacroHall app. When
               you choose to delete your account, all personal and health-related
               information associated with your profile — including height, weight,
               preferences, and nutrition data — will be permanently removed from our
