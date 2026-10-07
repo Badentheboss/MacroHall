@@ -6,20 +6,29 @@ CollegeMacro is a multi-school dining and nutrition platform. This repository co
 
 ## Backend
 
-The backend is designed to ingest dining-hall menus from multiple schools through school-specific parser adapters and shared ingestion logic. Its data model normalizes schools, dining halls, menu items, and related nutrition data for Supabase/Postgres storage.
+The backend ingests dining-hall menus for many schools and serves the app's AI features. Its data model normalizes schools, dining halls, dated menu items, and nutrition data in Supabase/Postgres.
 
 Highlights:
 
-- Configuration-driven school URLs and parsing selectors
-- Adapters for the University of Michigan, UT Austin, and Ohio State
-- Shared normalized schema and school/hall-keyed persistence
-- Fixture-based parser regression tests
-- Express API endpoints for health checks, school listings, and ingestion
+- One adapter per menu platform (Nutrislice, Dine On Campus, Purdue's API), so adding a school on a supported platform takes a few lines of config
+- AI extraction (Claude) for menus published only as web pages, PDFs, or photos
+- Campus-local dates: each run ingests today and tomorrow in every school's own time zone
+- A campus food chatbot (`POST /chat`) grounded in the student's menus and macros
+- Supabase migration for .edu-only sign-up, friends, dining-hall check-ins, and messaging, tested in PGlite
+
+## Mobile app
+
+- Sign up by picking your school and verifying a `.edu` email on that school's domain
+- Menus for your own school's dining halls, with "Snap the menu" when a hall hasn't posted one
+- **Friends:** see which friends are at a dining hall (or "Not at a dining hall") and message them
+- **Ask:** the campus food chatbot
 
 ## Repository layout
 
-- `CollegeMacro-backend/` — ingestion pipeline, API, database schema, and tests
+- `CollegeMacro-backend/` — ingestion pipeline, API, database schema and migrations, tests
 - `CollegeMacro-mobile/` — Expo / React Native client
+- `.github/workflows/` — scheduled menu ingestion and daily log reset
+- `docs/EXPANSION_PLAN.md` — which schools to add next, how to handle unparsable menus, launch checklist
 
 ## Run the backend
 
@@ -29,10 +38,6 @@ From `CollegeMacro-backend/`:
 npm install
 npm test
 npm start
-``
+```
 
-To persist data, configure `SUPABASE_URL` and `SUPABASE_ANON_KEY` in a local `.env` file. See [the backend README](CollegeMacro-backend/README.md) for ingestion commands and endpoint details.
-
-## Current status
-
-The backend contains the multi-school ingestion and normalized persistence work. The mobile client still has Michigan-specific data/query assumptions and needs integration with the normalized multi-school backend.
+Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ANTHROPIC_API_KEY` in a local `.env` file (see `.env.example`). See [the backend README](CollegeMacro-backend/README.md) for ingestion commands and endpoints, and [the expansion plan](docs/EXPANSION_PLAN.md#7-launch-checklist) for the Supabase setup steps.

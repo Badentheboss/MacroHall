@@ -1,64 +1,47 @@
 # CollegeMacro Backend
 
-Multi-school dining and nutrition ingestion backend.
+Multi-school dining ingestion, plus the API behind the app's AI features.
 
-## What changed
+## How it works
 
-This backend was refactored from single-school (UMich-only, one table per hall) to a scalable model:
-
-- Shared normalized schema (`schools`, `dining_halls`, `menu_items`, and child tables)
-- Per-school parser adapters (`umich`, `ut-austin`, `ohio-state`)
-- URLs and selectors moved to school config files
-- Shared storage keyed by `school_id` and `hall_id`
-- Fixture-based parser tests to catch selector drift
-
-## Project layout
-
-- `src/config/schools/` - per-school URLs, fetch mode, and selectors
-- `src/adapters/` - parser adapters per school
-- `src/ingest/` - ingestion orchestration + fetchers
-- `src/db/schema.sql` - normalized Supabase/Postgres schema
-- `src/db/supabaseRepository.js` - persistence into normalized tables
-- `tests/fixtures/` - saved HTML fixtures
-- `tests/adapters.test.js` - parser regression tests
+- **Platform adapters** (`src/adapters/`): one per menu platform, not per school.
+  - `nutrislice`: Nutrislice JSON API (Ohio State, Wisconsin, Georgia Tech, ...)
+  - `dineoncampus`: Dine On Campus API (Texas A&M, Pitt, Houston); fetched with a real browser because of bot protection
+  - `purdue-hfs`: Purdue's public menus API
+  - `umich`: University of Michigan's dining site
+  - `css-selectors`: generic selector-driven HTML parser
+  - `ai-extract`: Claude reads a web page, PDF, or image into structured dishes (fallback for anything else)
+- **School catalog** (`src/config/catalog.js`): every school the sign-up picker shows, with email domains, time zone, platform, and live/coming-soon status. `src/config/schools/*.js` holds ingestion settings for the schools being ingested.
+- **Ingestion** (`src/ingest/`): ingests today and tomorrow in each school's time zone and writes dated menus with bulk inserts. The canonical nutrition units are documented in `src/adapters/shared/nutrition.js`.
+- **Database** (`src/db/`): `schema.sql`, then `migrations/002_multi_school_social.sql`, then `seed/schools.sql`.
+- **Chatbot** (`src/chat/`): `POST /chat` runs Claude with tools over the student's menus and food log, plus web search limited to their school's domains.
 
 ## Setup
 
-1. Install dependencies:
-
-```bash
-npm install
-```
-
-2. Set environment variables:
-
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-
-3. Apply `src/db/schema.sql` in the Supabase SQL editor.
+1. `npm install`
+2. Copy `.env.example` to `.env` and fill in `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `INGEST_SECRET`.
+3. In the Supabase SQL editor, apply `src/db/schema.sql`, `src/db/migrations/002_multi_school_social.sql`, and `src/db/seed/schools.sql`.
 
 ## Commands
 
-- Start API server: `npm start`
-- Ingest one school (no DB write): `npm run ingest -- --school=umich`
-- Ingest one school and persist: `npm run ingest -- --school=umich --persist=true`
-- Ingest all schools and persist: `npm run ingest:all`
-- Run parser tests: `npm test`
+- Start the API: `npm start`
+- Run tests (adapters, chatbot, and the migration in PGlite): `npm test`
+- Ingest one school without writing to the DB: `npm run ingest -- --school=umich`
+- Ingest and persist: `npm run ingest -- --school=umich --persist=true`
+- Ingest every configured school: `npm run ingest:all`
+- List a school's dining locations: `npm run discover -- --school=ohio-state`
+- Save real API responses as test fixtures: `npm run capture -- --school=ohio-state`
+- Regenerate the school seed after editing the catalog: `npm run db:seed-sql`
 
 ## API endpoints
 
 - `GET /health`
-- `GET /schools`
-- `POST /ingest?school=umich&persist=true`
+- `GET /schools`: configured ingestion schools
+- `POST /chat` (Supabase bearer token): `{ messages: [{ role, content }] }` → `{ reply }`
+- `POST /menus/photo` (Supabase bearer token): `{ hallId, imageBase64, mediaType }`; reads a menu-board photo for a hall with no menu today
+- `DELETE /delete-user` (Supabase bearer token)
+- `POST /ingest?school=umich&persist=true` (requires `Authorization: Bearer $INGEST_SECRET`)
 
-## Add a new school
+## Add a school
 
-1. Add `src/config/schools/<school>.js` with listing URL and selectors.
-2. Add `src/adapters/<school>.js` that exports `listHalls` and `parseHall`.
-3. Register the adapter in `src/adapters/index.js`.
-4. Register the school in `src/config/schools/index.js`.
-5. Add fixtures under `tests/fixtures/<school>/` and extend `tests/adapters.test.js`.
-
-## Note on the mobile app
-
-The mobile project still uses Michigan-specific hardcoded hall names and one-table-per-hall queries. To use this backend fully, update mobile queries to read from normalized tables by selected `school` and `hall`.
+See the checklist in [docs/EXPANSION_PLAN.md](../docs/EXPANSION_PLAN.md#adding-a-school-checklist). For a school on a supported platform: add a catalog entry, add a small config file, run `npm run discover`, ingest, then set the school live.
