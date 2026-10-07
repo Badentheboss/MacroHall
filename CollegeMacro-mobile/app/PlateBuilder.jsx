@@ -3,8 +3,9 @@ import { Alert, TextInput, View } from "react-native";
 import { postToBackend } from "../utils/api";
 import { addItemsToLog } from "../utils/log";
 import { fetchHalls, fetchMySchool } from "../utils/schools";
-import { radius, space, type, useAppTheme, useStyles } from "../theme";
-import { Button, Chip, ChipRow, Divider, EmptyState, FadeIn, Screen, Txt } from "../components/kit";
+import { elevation, radius, space, type, useAppTheme, useStyles } from "../theme";
+import { Button, Chip, ChipRow, Divider, EmptyState, FadeIn, FoodThumb, Screen, Txt } from "../components/kit";
+import { foodGlyph } from "../utils/foodGlyph";
 
 const MEALS = ["breakfast", "brunch", "lunch", "dinner", "late night"];
 const label = (meal) => meal.replace(/^\w/, (c) => c.toUpperCase());
@@ -144,10 +145,14 @@ export default function PlateBuilder({ navigation }) {
                 <View key={`${item.name}-${item.subheader}`}>
                   {itemIndex > 0 && <Divider />}
                   <View style={styles.itemRow}>
-                    <View style={styles.servings}>
-                      <Txt variant="caption" style={styles.servingsText}>
-                        {item.servings}×
-                      </Txt>
+                    {/* Dish thumbnail with the servings count pinned to its corner */}
+                    <View>
+                      <FoodThumb glyph={foodGlyph(item.name)} size={40} />
+                      <View style={styles.servings}>
+                        <Txt variant="caption" style={styles.servingsText}>
+                          {item.servings}×
+                        </Txt>
+                      </View>
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
                       <Txt variant="bodyStrong" numberOfLines={2}>
@@ -256,11 +261,24 @@ const makeStyles = (c) => ({
   bleed: { marginHorizontal: -space.lg },
   chipRow: { paddingHorizontal: space.lg },
   empty: { paddingVertical: space.xl },
-  plate: { backgroundColor: c.surface, borderRadius: radius.lg, padding: space.xl, gap: space.lg },
+  plate: { backgroundColor: c.surface, borderRadius: radius.lg, padding: space.xl, gap: space.lg, ...elevation(c) },
   plateHeader: { gap: space.xs },
   itemRow: { flexDirection: "row", alignItems: "center", gap: space.md, paddingVertical: space.md },
-  servings: { minWidth: 36, height: 28, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: c.sunken, alignItems: "center", justifyContent: "center" },
-  servingsText: { fontFamily: type.title.fontFamily, fontVariant: ["tabular-nums"] },
+  servings: {
+    position: "absolute",
+    right: -6,
+    bottom: -6,
+    minWidth: 24,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: radius.pill,
+    backgroundColor: c.primary,
+    borderWidth: 2,
+    borderColor: c.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  servingsText: { fontFamily: type.title.fontFamily, fontSize: 10, lineHeight: 12, color: c.onPrimary, fontVariant: ["tabular-nums"] },
   itemMacros: { alignItems: "flex-end", gap: 2 },
   tabular: { fontVariant: ["tabular-nums"], fontFamily: type.bodyStrong.fontFamily },
   totals: { flexDirection: "row", gap: space.sm, backgroundColor: c.sunken, borderRadius: radius.md, padding: space.lg },

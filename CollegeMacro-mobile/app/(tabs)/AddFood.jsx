@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from "../../utils/config";
 import { useFocusEffect } from '@react-navigation/native';
 import { formatNutrientDisplay, parseNutritionValue } from "../../utils/nutrients";
-import { motion, radius, space, type, useAppTheme, useStyles } from "../../theme";
+import { elevation, motion, radius, space, type, useAppTheme, useStyles } from "../../theme";
 import {
   Button,
   Chip,
@@ -25,9 +25,11 @@ import {
   Divider,
   EmptyState,
   FadeIn,
+  FoodThumb,
   HeartButton,
   IconButton,
   Segmented,
+  Tap,
   TextField,
   Txt,
 } from "../../components/kit";
@@ -35,6 +37,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { fetchHalls, fetchMySchool, todayInTimezone } from "../../utils/schools";
 import { postToBackend } from "../../utils/api";
 import { dishKey, fetchFavoriteKeys, setFavorite } from "../../utils/favorites";
+import { foodGlyph } from "../../utils/foodGlyph";
 
 const ESTIMATED_SOURCES = new Set(['ai_estimated', 'crowdsourced']);
 const MEAL_ORDER = [
@@ -97,6 +100,21 @@ const macroText = (raw, unit = '') => {
   const value = macroValue(raw);
   return value === null ? '—' : `${value}${unit}`;
 };
+
+// Hall tiles: icon on top, name below. Vertical padding leaves room for the
+// inactive tiles' soft shadow inside the horizontal scroller.
+const hallStyles = StyleSheet.create({
+  row: { gap: space.md, paddingHorizontal: space.lg, paddingTop: space.xs, paddingBottom: space.md },
+  tile: {
+    width: 112,
+    height: 96,
+    borderRadius: radius.lg,
+    padding: space.md,
+    justifyContent: 'space-between',
+  },
+  tileIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  tileName: { fontFamily: type.bodyStrong.fontFamily, lineHeight: 18 },
+});
 
 export function HeaderSelector({ halls, menuDate, selectedDiningHall, setSelectedDiningHall, selectedMealTime, setSelectedMealTime, diningOpen, setDiningOpen, mealOpen, setMealOpen, dismissSearch }) {
   const [mealItems, setMealItems] = useState([]);
@@ -192,7 +210,7 @@ export function HeaderSelector({ halls, menuDate, selectedDiningHall, setSelecte
     fetchAvailableMealTimes();
   }, [selectedDiningHall, halls, menuDate]);
 
-  // Halls scroll sideways as chips (active = ink). Meals the hall serves today
+  // Halls scroll sideways as tiles (active = school color). Meals the hall serves today
   // sit in a segmented control, or a chip row when there are too many for one.
   const pickHall = (slug) => {
     dismissSearch?.();
@@ -205,6 +223,7 @@ export function HeaderSelector({ halls, menuDate, selectedDiningHall, setSelecte
     setSelectedMealTime(value);
   };
   const mealsAsChips = mealItems.length === 1 || mealItems.length > 4;
+  const { c, isDark } = useAppTheme();
 
   const hallScrollRef = useRef(null);
   const hallOffsets = useRef({});
@@ -219,29 +238,49 @@ export function HeaderSelector({ halls, menuDate, selectedDiningHall, setSelecte
 
   return (
     <View style={{ gap: space.md }}>
-      {/* Same look as the kit's ChipRow, plus a ref so the active hall
-          scrolls into view (the saved hall can sit off-screen). */}
+      {/* Halls as tiles; the active one wears the school's color. A ref keeps
+          the active hall scrolled into view (the saved hall can sit off-screen). */}
       <ScrollView
         ref={hallScrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.lg }}
+        contentContainerStyle={hallStyles.row}
       >
-        {diningItems.map((hall) => (
-          <View
-            key={hall.value}
-            onLayout={(e) => {
-              hallOffsets.current[hall.value] = e.nativeEvent.layout.x;
-              if (hall.value === selectedDiningHall) scrollToHall(hall.value);
-            }}
-          >
-            <Chip
-              label={hall.label}
-              active={hall.value === selectedDiningHall}
-              onPress={() => pickHall(hall.value)}
-            />
-          </View>
-        ))}
+        {diningItems.map((hall) => {
+          const active = hall.value === selectedDiningHall;
+          return (
+            <View
+              key={hall.value}
+              onLayout={(e) => {
+                hallOffsets.current[hall.value] = e.nativeEvent.layout.x;
+                if (hall.value === selectedDiningHall) scrollToHall(hall.value);
+              }}
+            >
+              <Tap
+                onPress={() => pickHall(hall.value)}
+                accessibilityRole="button"
+                accessibilityLabel={hall.label}
+                accessibilityState={{ selected: active }}
+                style={[
+                  hallStyles.tile,
+                  active ? { backgroundColor: c.school } : [{ backgroundColor: c.surface }, elevation(c)],
+                ]}
+              >
+                <View style={[hallStyles.tileIcon, { backgroundColor: active ? 'rgba(255,255,255,0.16)' : c.schoolSoft }]}>
+                  <Ionicons name={active ? 'restaurant' : 'restaurant-outline'} size={17} color={active ? c.onSchool : isDark ? c.ink : c.school} />
+                </View>
+                <Txt
+                  variant="small"
+                  numberOfLines={2}
+                  color={active ? c.onSchool : c.ink}
+                  style={hallStyles.tileName}
+                >
+                  {hall.label}
+                </Txt>
+              </Tap>
+            </View>
+          );
+        })}
       </ScrollView>
 
       {mealItems.length > 0 ? (
@@ -978,25 +1017,28 @@ export default function FoodList() {
             accessibilityHint="Opens nutrition details"
             style={({ pressed }) => [styles.cardBody, pressed && { opacity: 0.6 }]}
           >
-            <Txt variant="title" numberOfLines={2}>
-              {foodItem.name}
-            </Txt>
-            <MacroLine facts={facts} />
-            {(flags.isEstimate || flags.matchingAllergens.length > 0 || traitTags.length > 0) && (
-              <View style={styles.tagRow}>
-                {flags.isEstimate && <Tag label="Estimated" icon="sparkles-outline" />}
-                {flags.matchingAllergens.map((allergen) => (
-                  <Tag key={`allergen-${allergen}`} label={`Contains ${allergen}`} icon="alert-circle-outline" tone="warning" />
-                ))}
-                {traitTags.map((trait) => (
-                  <Tag
-                    key={`trait-${trait}`}
-                    label={trait}
-                    icon={flags.matchingPreferences.includes(trait) ? 'checkmark' : undefined}
-                  />
-                ))}
-              </View>
-            )}
+            <FoodThumb glyph={foodGlyph(foodItem.name)} size={56} />
+            <View style={styles.cardText}>
+              <Txt variant="title" numberOfLines={2}>
+                {foodItem.name}
+              </Txt>
+              <MacroLine facts={facts} />
+              {(flags.isEstimate || flags.matchingAllergens.length > 0 || traitTags.length > 0) && (
+                <View style={styles.tagRow}>
+                  {flags.isEstimate && <Tag label="Estimated" icon="sparkles-outline" />}
+                  {flags.matchingAllergens.map((allergen) => (
+                    <Tag key={`allergen-${allergen}`} label={`Contains ${allergen}`} icon="alert-circle-outline" tone="warning" />
+                  ))}
+                  {traitTags.map((trait) => (
+                    <Tag
+                      key={`trait-${trait}`}
+                      label={trait}
+                      icon={flags.matchingPreferences.includes(trait) ? 'checkmark' : undefined}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
           </Pressable>
 
           <View style={styles.cardActions}>
@@ -1020,7 +1062,7 @@ export default function FoodList() {
               accessibilityLabel={`Add ${foodItem.name} to log`}
               style={({ pressed }) => [styles.addButton, pressed && { opacity: 0.8, transform: [{ scale: 0.94 }] }]}
             >
-              <Ionicons name={justAdded ? 'checkmark' : 'add'} size={22} color={c.inverse} />
+              <Ionicons name={justAdded ? 'checkmark' : 'add'} size={22} color={c.onPrimary} />
             </Pressable>
           </View>
         </View>
@@ -1275,6 +1317,7 @@ export default function FoodList() {
             <Reanimated.View entering={SlideInDown.duration(motion.base)} style={[styles.sheet, styles.detailSheet, { paddingBottom: space.lg + insets.bottom }]}>
               <View style={styles.handle} />
               <View style={styles.detailHeader}>
+                <FoodThumb glyph={foodGlyph(currentFoodItem.name)} size={64} />
                 <View style={{ flex: 1, gap: space.xs }}>
                   {currentFoodItem.subheader ? (
                     <Txt variant="overline" tone="muted">
@@ -1507,7 +1550,7 @@ function ToggleRow({ title, subtitle, value, onValueChange }) {
         value={value}
         onValueChange={onValueChange}
         accessibilityLabel={title}
-        trackColor={{ false: c.sunken, true: c.ink }}
+        trackColor={{ false: c.sunken, true: c.primary }}
         thumbColor={c.surface}
         activeThumbColor={c.surface}
         ios_backgroundColor={c.sunken}
@@ -1532,14 +1575,16 @@ const makeStyles = (c) => ({
     borderRadius: radius.lg,
     flexDirection: 'row',
     alignItems: 'center',
+    ...elevation(c),
   },
-  cardBody: { flex: 1, gap: space.sm, padding: space.lg, paddingRight: space.sm },
-  cardActions: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingRight: space.lg },
+  cardBody: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: space.md, padding: space.md, paddingRight: 0 },
+  cardText: { flex: 1, gap: space.xs + 2, paddingTop: 2 },
+  cardActions: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'space-between', gap: space.xs, paddingVertical: space.sm, paddingRight: space.sm },
   addButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: c.ink,
+    backgroundColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1563,7 +1608,7 @@ const makeStyles = (c) => ({
   detailSheet: { maxHeight: '90%' },
   handle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: c.hairline, marginBottom: space.sm },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: space.xl, paddingRight: space.md },
-  detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, paddingLeft: space.xl, paddingRight: space.md, paddingTop: space.sm },
+  detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingLeft: space.xl, paddingRight: space.md, paddingTop: space.sm },
   detailHeaderActions: { flexDirection: 'row', alignItems: 'center', marginTop: -space.sm },
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   sheetScrollContent: { paddingHorizontal: space.xl, paddingTop: space.lg, paddingBottom: space.lg, gap: space.xl },

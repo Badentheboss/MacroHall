@@ -6,7 +6,8 @@ import { supabase } from "../../utils/config";
 import { useTheme } from '../../context/ThemeContext';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { radius, space, type, useAppTheme, useStyles } from '../../theme';
-import { Card, EmptyState, FadeIn, IconButton, Screen, Tap, Txt } from '../../components/kit';
+import { Card, EmptyState, FadeIn, FoodThumb, IconButton, Screen, Tap, Txt } from '../../components/kit';
+import { foodGlyph } from '../../utils/foodGlyph';
 
 const formatCount = (n) => Math.round(n || 0).toLocaleString('en-US');
 
@@ -19,11 +20,16 @@ const logStyles = (c) => ({
   meal: { gap: space.sm },
   mealHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: space.xs },
   entries: { paddingVertical: space.sm },
-  entry: { paddingHorizontal: space.lg + 4, paddingVertical: space.md, gap: space.sm },
+  entry: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md },
+  entryMain: { flex: 1, gap: space.xs },
   entryTop: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   entryBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
+  macros: { flex: 1, gap: 2 },
+  macroDots: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: space.sm, rowGap: 2 },
+  macro: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   stepper: { flexDirection: 'row', alignItems: 'center', height: 44, borderRadius: radius.pill, backgroundColor: c.sunken },
   stepButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  stepPrimary: { width: 32, height: 32, borderRadius: 16, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' },
   stepInput: { ...type.bodyStrong, width: 36, padding: 0, textAlign: 'center', color: c.ink, fontVariant: ['tabular-nums'], outlineStyle: 'none' },
   clear: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: space.sm, height: 44, paddingHorizontal: space.lg, borderRadius: radius.pill },
 });
@@ -263,69 +269,94 @@ export default function Log() {
               <View style={styles.entries}>
               {section.data.map((item, index) => (
                 <View key={`${item.name}-${index}`} style={styles.entry}>
-                  <View style={styles.entryTop}>
-                    <Txt variant="bodyStrong" numberOfLines={2} style={{ flex: 1, paddingTop: space.sm + 2 }}>
-                      {item.name}
-                    </Txt>
-                    <IconButton
-                      name="trash-outline"
-                      size={19}
-                      color={c.muted}
-                      label={`Remove ${item.name}`}
-                      onPress={() => removeItem(item.name)}
-                      style={{ marginRight: -space.sm }}
-                    />
-                  </View>
-                  <View style={styles.entryBottom}>
-                    <Txt variant="caption" tone="muted" style={{ flex: 1, fontVariant: ['tabular-nums'] }}>
-                      {Math.round(item.nutrition_facts.calories)} cal · {Math.round(item.nutrition_facts.protein)}g protein · {Math.round(item.nutrition_facts.total_carbohydrate)}g carbs · {Math.round(item.nutrition_facts.total_fat)}g fat
-                    </Txt>
-                    <View style={styles.stepper}>
-                      <Pressable
-                        style={styles.stepButton}
-                        accessibilityRole="button"
-                        accessibilityLabel={item.servings - 1 <= 0 ? `Remove ${item.name}` : `Decrease servings of ${item.name}`}
-                        onPress={() => {
-                          if (item.servings - 1 <= 0) {
-                            removeItem(item.name);
-                          } else {
-                            updateServings(item.name, item.servings - 1);
-                          }
-                        }}
+                  <FoodThumb glyph={foodGlyph(item.name)} size={44} />
+                  <View style={styles.entryMain}>
+                    <View style={styles.entryTop}>
+                      <Txt variant="bodyStrong" numberOfLines={2} style={{ flex: 1, paddingTop: space.sm + 2 }}>
+                        {item.name}
+                      </Txt>
+                      <IconButton
+                        name="trash-outline"
+                        size={19}
+                        color={c.muted}
+                        label={`Remove ${item.name}`}
+                        onPress={() => removeItem(item.name)}
+                        style={{ marginRight: -space.sm }}
+                      />
+                    </View>
+                    <View style={styles.entryBottom}>
+                      <View
+                        style={styles.macros}
+                        accessible
+                        accessibilityLabel={`${Math.round(item.nutrition_facts.calories)} cal · ${Math.round(item.nutrition_facts.protein)}g protein · ${Math.round(item.nutrition_facts.total_carbohydrate)}g carbs · ${Math.round(item.nutrition_facts.total_fat)}g fat`}
                       >
-                        <Ionicons name="remove" size={18} color={c.ink} />
-                      </Pressable>
-
-                      <TextInput
-                        style={styles.stepInput}
-                        value={editingServing?.name === item.name ? editingServing.value : String(item.servings ?? 1)}
-                        keyboardType="numeric"
-                        accessibilityLabel={`Servings of ${item.name}`}
-                        selectTextOnFocus
-                        onChangeText={(text) => {
-                          setEditingServing({ name: item.name, value: text });
-                        }}
-                        onBlur={() => {
-                          if (editingServing) {
-                            const newServings = parseFloat(editingServing.value) || 0;
-                            if (newServings === 0) {
+                        <Txt variant="small" style={{ fontFamily: type.bodyStrong.fontFamily, fontVariant: ['tabular-nums'] }}>
+                          {Math.round(item.nutrition_facts.calories)} cal
+                        </Txt>
+                        <View style={styles.macroDots}>
+                          {[
+                            { key: 'P', value: item.nutrition_facts.protein, color: c.protein },
+                            { key: 'C', value: item.nutrition_facts.total_carbohydrate, color: c.carbs },
+                            { key: 'F', value: item.nutrition_facts.total_fat, color: c.fat },
+                          ].map((m) => (
+                            <View key={m.key} style={styles.macro}>
+                              <View style={[styles.dot, { width: 6, height: 6, backgroundColor: m.color }]} />
+                              <Txt variant="caption" tone="muted" style={{ fontVariant: ['tabular-nums'] }}>
+                                {Math.round(m.value)}g {m.key}
+                              </Txt>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                      <View style={styles.stepper}>
+                        <Pressable
+                          style={styles.stepButton}
+                          accessibilityRole="button"
+                          accessibilityLabel={item.servings - 1 <= 0 ? `Remove ${item.name}` : `Decrease servings of ${item.name}`}
+                          onPress={() => {
+                            if (item.servings - 1 <= 0) {
                               removeItem(item.name);
                             } else {
-                              updateServings(item.name, newServings);
+                              updateServings(item.name, item.servings - 1);
                             }
-                            setEditingServing(null);
-                          }
-                        }}
-                      />
+                          }}
+                        >
+                          <Ionicons name="remove" size={18} color={c.ink} />
+                        </Pressable>
 
-                      <Pressable
-                        style={styles.stepButton}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Increase servings of ${item.name}`}
-                        onPress={() => updateServings(item.name, item.servings + 1)}
-                      >
-                        <Ionicons name="add" size={18} color={c.ink} />
-                      </Pressable>
+                        <TextInput
+                          style={styles.stepInput}
+                          value={editingServing?.name === item.name ? editingServing.value : String(item.servings ?? 1)}
+                          keyboardType="numeric"
+                          accessibilityLabel={`Servings of ${item.name}`}
+                          selectTextOnFocus
+                          onChangeText={(text) => {
+                            setEditingServing({ name: item.name, value: text });
+                          }}
+                          onBlur={() => {
+                            if (editingServing) {
+                              const newServings = parseFloat(editingServing.value) || 0;
+                              if (newServings === 0) {
+                                removeItem(item.name);
+                              } else {
+                                updateServings(item.name, newServings);
+                              }
+                              setEditingServing(null);
+                            }
+                          }}
+                        />
+
+                        <Pressable
+                          style={styles.stepButton}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Increase servings of ${item.name}`}
+                          onPress={() => updateServings(item.name, item.servings + 1)}
+                        >
+                          <View style={styles.stepPrimary}>
+                            <Ionicons name="add" size={18} color={c.onPrimary} />
+                          </View>
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
                 </View>
