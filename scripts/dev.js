@@ -32,9 +32,15 @@ function readEnv(file) {
 // Placeholders from the .env.example files count as missing.
 const isSet = (value) => Boolean(value) && !/your-|example|generate-a-long/i.test(value);
 
+// Installs on the first run, and again whenever package.json or the lockfile
+// changed since the last install (e.g. after a git pull that adds a package).
 function ensureInstalled(dir, label) {
-  if (fs.existsSync(path.join(dir, 'node_modules'))) return;
-  console.log(`Installing ${label} dependencies (first run only)...`);
+  const marker = path.join(dir, 'node_modules', '.package-lock.json');
+  const mtime = (file) => (fs.existsSync(file) ? fs.statSync(file).mtimeMs : 0);
+  const installedAt = mtime(marker);
+  const changedAt = Math.max(mtime(path.join(dir, 'package.json')), mtime(path.join(dir, 'package-lock.json')));
+  if (installedAt && installedAt >= changedAt) return;
+  console.log(`Installing ${label} dependencies${installedAt ? ' (package.json changed)' : ' (first run only)'}...`);
   const result = spawnSync('npm', ['install'], { cwd: dir, stdio: 'inherit', shell: isWindows });
   if (result.status !== 0) {
     console.error(`npm install failed in ${path.relative(root, dir)}.`);
