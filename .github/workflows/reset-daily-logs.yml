@@ -1,0 +1,33 @@
+name: Reset daily food logs
+
+# Hourly, so every user's log clears just after midnight in their school's
+# time zone rather than at one fixed UTC time for the whole country.
+on:
+  schedule:
+    - cron: "2 * * * *"
+  workflow_dispatch:
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: CollegeMacro-backend
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: CollegeMacro-backend/package-lock.json
+
+      - run: npm ci
+
+      - run: node src/cli/resetLogs.js

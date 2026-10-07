@@ -3,7 +3,7 @@
 // dining halls without a parsable platform, and the engine behind crowdsourced
 // menu photos.
 const cheerio = require('cheerio');
-const { createMessage, textOf } = require('./claude');
+const { createMessage, getModel, outputConfig, textOf } = require('./claude');
 const { buildNutrition } = require('../adapters/shared/nutrition');
 const { mergeMenuItems } = require('../adapters/shared/normalizeItem');
 const { cleanText } = require('../adapters/shared/text');
@@ -139,7 +139,7 @@ async function extractMenu({ hallName, date, source, estimateMissingNutrition = 
     {
       max_tokens: 16000,
       system: SYSTEM_PROMPT,
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: MENU_SCHEMA } },
+      output_config: outputConfig(getModel(), 'low', { format: { type: 'json_schema', schema: MENU_SCHEMA } }),
       messages: [{ role: 'user', content: [sourceBlock(source), { type: 'text', text: instructions }] }],
     },
     anthropic

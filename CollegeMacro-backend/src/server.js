@@ -1,77 +1,175 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 
 const { schools } = require('./config/schools');
 const { ingestSchool } = require('./ingest/ingestSchool');
+const { localDate } = require('./ingest/dates');
+const { requireSecret, requireUser } = require('./http/auth');
+const { loadChatContext } = require('./chat/context');
+const { answer } = require('./chat/chat');
+const { extractMenu } = require('./ai/menuExtractor');
+const { replaceHallMenu } = require('./db/supabaseRepository');
+const { Anthropic } = require('./ai/claude');
 
-const app = express();
-app.use(express.json());
-const port = Number(process.env.PORT || 3001);
+const AI_DAILY_LIMIT = Number(process.env.AI_DAILY_LIMIT || 40);
+const PHOTO_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+function defaultSupabase() {
+  return require('../supabaseClient')();
+}
 
-app.get('/health', (_, res) => {
-  res.json({ ok: true, service: 'CollegeMacro backend' });
-});
+async function consumeQuota(supabase, userId) {
+  const { data, error } = await supabase.rpc('consume_ai_quota', { p_user: userId, p_limit: AI_DAILY_LIMIT });
+  if (error) throw error;
+  return data === true;
+}
 
-app.get('/schools', (_, res) => {
-  res.json({
-    schools: schools.map((s) => ({
-      slug: s.slug,
-      name: s.name,
-      listingUrl: s.listingUrl,
-      adapter: s.adapter,
-    })),
+function createApp({ getSupabase = defaultSupabase, anthropic, extract = extractMenu } = {}) {
+  const app = express();
+  const auth = requireUser(getSupabase);
+
+  app.get('/health', (_, res) => {
+    res.json({ ok: true, service: 'CollegeMacro backend' });
   });
-});
 
-app.delete('/delete-user', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Missing auth token.' });
-    }
-
-    const token = authHeader.slice(7);
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !user) {
-      return res.status(401).json({ message: 'Invalid or expired token.' });
-    }
-
-    const { userId } = req.body;
-    if (user.id !== userId) {
-      return res.status(403).json({ message: 'Cannot delete another user\'s account.' });
-    }
-
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
-    if (error) throw error;
-
-    res.json({ ok: true });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-app.post('/ingest', async (req, res) => {
-  try {
-    const schoolSlug = String(req.query.school || 'umich');
-    const persist = String(req.query.persist || 'false') === 'true';
-
-    const result = await ingestSchool({ schoolSlug, persist });
+  app.get('/schools', (_, res) => {
     res.json({
-      message: 'Ingestion finished',
-      school: result.school,
-      halls_ingested: result.halls.length,
-      updated_at: result.updated_at,
+      schools: schools.map((s) => ({
+        slug: s.slug,
+        name: s.name,
+        status: s.status,
+        adapter: s.adapter,
+        timezone: s.timezone,
+      })),
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  });
 
-app.listen(port, () => {
-  console.log(`CollegeMacro backend is running on port ${port}`);
-});
+  app.delete('/delete-user', express.json(), auth, async (req, res) => {
+    try {
+      if (req.user.id !== req.body?.userId) {
+        return res.status(403).json({ message: "Cannot delete another user's account." });
+      }
+
+      const { error } = await getSupabase().auth.admin.deleteUser(req.user.id);
+      if (error) throw error;
+
+      return res.json({ ok: true });
+    } catch (error) {
+      return res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Operator-only: scraping and AI extraction cost time and money, so this
+  // needs INGEST_SECRET as a bearer token. The cron job uses the CLI instead.
+  app.post('/ingest', requireSecret('INGEST_SECRET'), async (req, res) => {
+    try {
+      const schoolSlug = String(req.query.school || 'umich');
+      const persist = String(req.query.persist || 'false') === 'true';
+
+      const result = await ingestSchool({ schoolSlug, persist });
+      return res.json({
+        message: 'Ingestion finished',
+        school: result.school,
+        menus: result.menus.map((menu) => ({ date: menu.date, halls_ingested: menu.halls.length })),
+        errors: result.errors,
+        updated_at: result.updated_at,
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Campus food chatbot. The client keeps the conversation and sends the
+  // recent turns; the server runs the tool loop against the student's school.
+  app.post('/chat', express.json({ limit: '64kb' }), auth, async (req, res) => {
+    try {
+      const supabase = getSupabase();
+      if (!(await consumeQuota(supabase, req.user.id))) {
+        return res.status(429).json({ message: `You've hit today's limit of ${AI_DAILY_LIMIT} questions. It resets tomorrow.` });
+      }
+
+      const ctx = await loadChatContext(supabase, req.user.id);
+      const result = await answer({ ctx, messages: req.body?.messages, anthropic });
+      return res.json(result);
+    } catch (error) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
+      if (error instanceof Anthropic.RateLimitError) {
+        return res.status(503).json({ message: 'The assistant is busy right now. Try again in a minute.' });
+      }
+      console.error('chat failed:', error);
+      return res.status(500).json({ message: 'Something went wrong. Try again.' });
+    }
+  });
+
+  // Crowdsourced menus: a student photographs the menu board at a hall that
+  // has no menu for today, and Claude turns it into dishes with estimated
+  // nutrition. Halls with an official menu are never overwritten.
+  app.post('/menus/photo', express.json({ limit: '8mb' }), auth, async (req, res) => {
+    try {
+      const { hallId, imageBase64, mediaType } = req.body || {};
+      if (!Number.isInteger(hallId) || typeof imageBase64 !== 'string' || !PHOTO_MEDIA_TYPES.has(mediaType)) {
+        return res.status(400).json({ message: 'Send hallId, imageBase64 and a JPEG, PNG or WebP mediaType.' });
+      }
+
+      const supabase = getSupabase();
+      const { data: profile, error: profileError } = await supabase
+        .from('users')
+        .select('school_id')
+        .eq('id', req.user.id)
+        .single();
+      if (profileError) throw profileError;
+
+      const { data: hall, error: hallError } = await supabase
+        .from('dining_halls')
+        .select('id, name, school_id, schools(timezone)')
+        .eq('id', hallId)
+        .single();
+      if (hallError || !hall || hall.school_id !== profile.school_id) {
+        return res.status(404).json({ message: 'That dining hall is not at your school.' });
+      }
+
+      const date = localDate(hall.schools?.timezone);
+      const { count, error: countError } = await supabase
+        .from('menu_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('hall_id', hallId)
+        .eq('menu_date', date)
+        .neq('nutrition_source', 'crowdsourced');
+      if (countError) throw countError;
+      if (count > 0) {
+        return res.status(409).json({ message: `${hall.name} already has today's menu.` });
+      }
+
+      if (!(await consumeQuota(supabase, req.user.id))) {
+        return res.status(429).json({ message: "You've hit today's AI limit. It resets tomorrow." });
+      }
+
+      const items = await extract({
+        hallName: hall.name,
+        date,
+        source: { kind: 'image', data: Buffer.from(imageBase64, 'base64'), mediaType },
+        estimateMissingNutrition: true,
+        anthropic,
+      });
+      if (items.length === 0) {
+        return res.status(422).json({ message: "Couldn't read any dishes from that photo. Try a closer, straighter shot." });
+      }
+
+      await replaceHallMenu(
+        hallId,
+        date,
+        items.map((item) => ({ ...item, nutritionSource: 'crowdsourced' })),
+        supabase
+      );
+      return res.json({ hall: hall.name, date, dishes: items.length });
+    } catch (error) {
+      console.error('menu photo failed:', error);
+      return res.status(500).json({ message: 'Could not process that photo.' });
+    }
+  });
+
+  return app;
+}
+
+module.exports = {
+  createApp,
+};

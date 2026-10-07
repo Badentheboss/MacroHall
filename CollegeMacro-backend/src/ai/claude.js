@@ -38,6 +38,14 @@ async function createMessage(params, anthropic = getClient()) {
   return anthropic.beta.messages.create(request);
 }
 
+// output_config for a request: effort where the model supports it (Haiku 4.5
+// rejects it), plus any other output settings such as a JSON schema format.
+function outputConfig(model, effort, extra = {}) {
+  const config = { ...extra };
+  if (!/haiku/.test(model)) config.effort = effort;
+  return config;
+}
+
 function textOf(message) {
   return (message.content || [])
     .filter((block) => block.type === 'text')
@@ -50,5 +58,6 @@ module.exports = {
   createMessage,
   getClient,
   getModel,
+  outputConfig,
   textOf,
 };
