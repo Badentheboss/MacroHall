@@ -1,20 +1,38 @@
 // Social pieces: Instagram-style avatars with a live story ring, story
 // bubbles, a double-tap heart, and Hinge-style profile panels and prompts.
 import React, { useEffect } from 'react';
-import { Pressable, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
-import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { liveGradient, radius, space, useAppTheme } from '../../theme';
 import { Txt } from './primitives';
+import { avatarUrl } from '../../utils/avatars';
 
 let gradientIds = 0;
 
-// Emoji avatar on a soft wash of the person's color. `live` draws the warm
-// gradient story ring (they're at a hall or gym now); `ring` draws a plain one.
-export function Avatar({ emoji = '🍽️', color = '#E0452B', size = 44, live = false, ring = false }) {
+// The standard "no photo yet" picture: a person silhouette on a gray disc.
+export function DefaultAvatar({ size = 44 }) {
+  const { c, isDark } = useAppTheme();
+  const disc = isDark ? '#3A3732' : '#DCD7CF';
+  const figure = isDark ? '#6E695F' : '#F7F4EF';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 40 40">
+      <Circle cx="20" cy="20" r="20" fill={disc} />
+      <Circle cx="20" cy="15.5" r="7" fill={figure} />
+      <Path d="M6.5 34.5c2.4-6.1 7.6-9.5 13.5-9.5s11.1 3.4 13.5 9.5A19.9 19.9 0 0 1 20 40a19.9 19.9 0 0 1-13.5-5.5z" fill={figure} />
+    </Svg>
+  );
+}
+
+// Profile picture: the person's photo, or the default silhouette when they
+// haven't set one. `live` draws the warm story ring (at a hall or gym now);
+// `ring` draws a plain hairline one. Pass `path` (profiles.avatar_path) or `uri`.
+export function Avatar({ path, uri, size = 44, live = false, ring = false }) {
   const { c } = useAppTheme();
   const id = React.useMemo(() => `live-${(gradientIds += 1)}`, []);
+  const [failed, setFailed] = React.useState(false);
+  const source = uri || avatarUrl(path);
   const gap = size >= 56 ? 3 : 2;
   const stroke = size >= 56 ? 3 : 2;
   const outer = live || ring ? size + (gap + stroke) * 2 : size;
@@ -33,18 +51,20 @@ export function Avatar({ emoji = '🍽️', color = '#E0452B', size = 44, live =
           <Circle cx={outer / 2} cy={outer / 2} r={(outer - stroke) / 2} stroke={live ? `url(#${id})` : c.hairline} strokeWidth={stroke} fill="none" />
         </Svg>
       ) : null}
-      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: `${color}22`, alignItems: 'center', justifyContent: 'center' }}>
-        <Txt style={{ fontSize: size * 0.48, lineHeight: size * 0.62 }}>{emoji}</Txt>
-      </View>
+      {source && !failed ? (
+        <Image source={{ uri: source }} onError={() => setFailed(true)} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.sunken }} accessibilityIgnoresInvertColors />
+      ) : (
+        <DefaultAvatar size={size} />
+      )}
     </View>
   );
 }
 
 // Avatar + name under it, for the stories strip.
-export function StoryBubble({ emoji, color, name, caption, live, onPress }) {
+export function StoryBubble({ path, uri, name, caption, live, onPress }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={[name, caption].filter(Boolean).join(', ')} style={{ width: 76, alignItems: 'center', gap: 6 }}>
-      <Avatar emoji={emoji} color={color} size={62} live={live} ring={!live} />
+      <Avatar path={path} uri={uri} size={62} live={live} ring={!live} />
       <View style={{ alignItems: 'center' }}>
         <Txt variant="caption" numberOfLines={1} style={{ maxWidth: 76 }}>
           {name}
@@ -81,25 +101,34 @@ export function HeartButton({ active, onPress, size = 22, label = 'Favorite', to
   );
 }
 
-// Hinge's big rounded "photo" card. Without photos, the person's emoji sits
-// on a wash of their color, with their name set large in the serif.
-export function ProfilePanel({ emoji, color = '#E0452B', name, subtitle, live, liveLabel, height = 360, children }) {
+// Hinge's big rounded photo card: the person's photo with their name over a
+// soft dark fade, or the default silhouette on the school's tint.
+export function ProfilePanel({ path, uri, name, subtitle, live, liveLabel, height = 360, children }) {
   const { c } = useAppTheme();
   const id = React.useMemo(() => `panel-${(gradientIds += 1)}`, []);
+  const [failed, setFailed] = React.useState(false);
+  const source = uri || avatarUrl(path);
+  const photo = Boolean(source) && !failed;
   return (
-    <View style={{ height, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: c.surface }}>
-      <Svg width="100%" height="100%" style={{ position: 'absolute' }}>
-        <Defs>
-          <LinearGradient id={id} x1="0" y1="0" x2="0.6" y2="1">
-            <Stop offset="0" stopColor={color} stopOpacity="0.16" />
-            <Stop offset="1" stopColor={color} stopOpacity="0.42" />
-          </LinearGradient>
-        </Defs>
-        <Rect width="100%" height="100%" fill={`url(#${id})`} />
-      </Svg>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Txt style={{ fontSize: height * 0.32, lineHeight: height * 0.4 }}>{emoji}</Txt>
-      </View>
+    <View style={{ height, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: photo ? c.sunken : c.schoolSoft }}>
+      {photo ? (
+        <>
+          <Image source={{ uri: source }} onError={() => setFailed(true)} resizeMode="cover" style={{ position: 'absolute', width: '100%', height: '100%' }} accessibilityIgnoresInvertColors />
+          <Svg width="100%" height="100%" style={{ position: 'absolute' }}>
+            <Defs>
+              <LinearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0.5" stopColor="#000000" stopOpacity="0" />
+                <Stop offset="1" stopColor="#000000" stopOpacity="0.55" />
+              </LinearGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill={`url(#${id})`} />
+          </Svg>
+        </>
+      ) : (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: height * 0.12 }}>
+          <DefaultAvatar size={Math.round(height * 0.42)} />
+        </View>
+      )}
       {live ? (
         <View style={{ position: 'absolute', top: space.lg, left: space.lg, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, height: 30 }}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: c.accent }} />
@@ -107,17 +136,21 @@ export function ProfilePanel({ emoji, color = '#E0452B', name, subtitle, live, l
         </View>
       ) : null}
       <View style={{ position: 'absolute', left: space.xl, right: space.xl, bottom: space.xl, gap: 2 }}>
-        <Txt variant="h1" numberOfLines={1}>
+        <Txt variant="h1" numberOfLines={1} color={photo ? '#FFFFFF' : undefined}>
           {name}
         </Txt>
-        {subtitle ? <Txt variant="small" tone="muted">{subtitle}</Txt> : null}
+        {subtitle ? (
+          <Txt variant="small" tone="muted" color={photo ? 'rgba(255,255,255,0.85)' : undefined}>
+            {subtitle}
+          </Txt>
+        ) : null}
       </View>
       {children}
     </View>
   );
 }
 
-// Hinge prompt: small label, big serif answer, optional heart in the corner.
+// Hinge prompt: small label, big answer, optional heart in the corner.
 export function PromptCard({ label, answer, footer, liked, onLike, likeLabel, children }) {
   const { c } = useAppTheme();
   return (

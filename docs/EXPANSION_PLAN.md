@@ -193,7 +193,7 @@ Freemium with a higher AI limit plus the plate builder for Pro; anonymous, aggre
 
 **Fastest path:** on your computer, from the repo root, run `npm run setup`. It walks through the steps below one at a time: it creates and opens both `.env` files, copies the database SQL and the email template to your clipboard, and opens each Supabase and GitHub page. Use `npm run env` to just open the `.env` files. Then `npm run dev` starts the backend and the app at http://localhost:8081 (`npm run demo` shows it on sample data before any of this is set up).
 
-**Database (Supabase SQL editor):** paste `CollegeMacro-backend/src/db/setup.sql` and run it. It bundles `schema.sql`, migrations `002`–`004`, and the school and gym seed, and it's safe to re-run. It expects the app's existing `public.users` table.
+**Database (Supabase SQL editor):** paste `CollegeMacro-backend/src/db/setup.sql` and run it. It bundles `schema.sql`, migrations `002`–`005` (005 adds school colors, profile photos and the `avatars` storage bucket), and the school and gym seed, and it's safe to re-run. It expects the app's existing `public.users` table.
 
 **Supabase settings**
 - Email confirmation on, plus a `{{ .Token }}` code in the Confirm signup template ([section 5](#5-edu-only-accounts-with-a-school-picker)).

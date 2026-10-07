@@ -277,3 +277,31 @@ test('CORS answers preflights only for the local web preview', async () => {
     server.close();
   }
 });
+
+test('DELETE /delete-user removes the profile photos and the account', async () => {
+  const removed = [];
+  const deleted = [];
+  const supabase = {
+    ...fakeSupabase(),
+    storage: {
+      from: (bucket) => ({
+        list: async (folder) => ({ data: bucket === 'avatars' && folder === 'user-1' ? [{ name: 'a.jpg' }, { name: 'b.png' }] : [], error: null }),
+        remove: async (paths) => {
+          removed.push(...paths);
+          return { error: null };
+        },
+      }),
+    },
+  };
+  supabase.auth = { ...supabase.auth, admin: { deleteUser: async (id) => (deleted.push(id), { error: null }) } };
+  const app = createApp({ getSupabase: () => supabase });
+
+  const other = await request(app, { method: 'DELETE', path: '/delete-user', token: 'good', body: { userId: 'someone-else' } });
+  assert.equal(other.status, 403);
+  assert.deepEqual(deleted, []);
+
+  const ok = await request(app, { method: 'DELETE', path: '/delete-user', token: 'good', body: { userId: 'user-1' } });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(removed, ['user-1/a.jpg', 'user-1/b.png']);
+  assert.deepEqual(deleted, ['user-1']);
+});

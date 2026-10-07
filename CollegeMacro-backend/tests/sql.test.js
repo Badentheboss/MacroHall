@@ -16,6 +16,7 @@ const SCHEMA = read('src', 'db', 'schema.sql');
 const MIGRATION = read('src', 'db', 'migrations', '002_multi_school_social.sql');
 const PROFILES = read('src', 'db', 'migrations', '003_profiles.sql');
 const GYMS = read('src', 'db', 'migrations', '004_gyms_favorites.sql');
+const PHOTOS = read('src', 'db', 'migrations', '005_school_colors_avatars.sql');
 const SEED = read('src', 'db', 'seed', 'schools.sql');
 
 const LEGACY = '00000000-0000-0000-0000-00000000000a';
@@ -72,6 +73,7 @@ test.before(async () => {
   await db.exec(MIGRATION);
   await db.exec(PROFILES);
   await db.exec(GYMS);
+  await db.exec(PHOTOS);
   await db.exec(SEED);
 });
 
@@ -83,6 +85,7 @@ test('migration and seed are idempotent and the seed file is current', async () 
   await db.exec(MIGRATION);
   await db.exec(PROFILES);
   await db.exec(GYMS);
+  await db.exec(PHOTOS);
   await db.exec(SEED);
   assert.equal(SEED, buildSeedSql(), 'run `npm run db:seed-sql` after editing the catalog');
   assert.equal(read('src', 'db', 'setup.sql'), buildSetupSql(), 'run `npm run db:setup-sql` after editing any SQL');
@@ -481,4 +484,30 @@ test('favorite dishes: private hearts matched to today\'s menus', async () => {
   assert.deepEqual((await as(IVY, `select * from public.favorite_dishes`)).rows, [], 'hearts are private rows');
   const profile = (await as(IVY, `select public.get_profile($1) as p`, [HANK])).rows[0].p;
   assert.deepEqual([...profile.favorites].sort(), ['  grilled CHICKEN ', 'Pad Thai'].sort());
+});
+
+test('schools carry their colors and profile photos stay in the owner folder', async () => {
+  const { rows: [umich] } = await as(ALEX, "select primary_color, secondary_color from public.schools where slug = 'umich'");
+  assert.deepEqual(umich, { primary_color: '#00274C', secondary_color: '#FFCB05' });
+  await rejects(asService("update public.schools set primary_color = 'blue' where slug = 'umich'"), /schools_color_format/);
+
+  // The profile stores a path inside the owner's folder, never a URL.
+  await as(ALEX, `update public.profiles set avatar_path = '${ALEX}/a1b2c3.jpg' where id = $1`, [ALEX]);
+  await rejects(as(ALEX, `update public.profiles set avatar_path = '${BLAKE}/stolen.jpg' where id = $1`, [ALEX]), /profiles_avatar_path_format/);
+  await rejects(as(ALEX, "update public.profiles set avatar_path = 'https://evil.example/x.jpg' where id = $1", [ALEX]), /profiles_avatar_path_format/);
+
+  // Storage: you can upload into your own folder only.
+  await as(ALEX, `insert into storage.objects (bucket_id, name) values ('avatars', '${ALEX}/a1b2c3.jpg')`);
+  await rejects(as(ALEX, `insert into storage.objects (bucket_id, name) values ('avatars', '${BLAKE}/x.jpg')`), /row-level security/);
+  const { rows: [bucket] } = await asService("select public, file_size_limit from storage.buckets where id = 'avatars'");
+  assert.equal(bucket.public, true);
+
+  // Classmates see the photo through the profile and search (Blake blocked
+  // Alex in an earlier test, so Casey looks).
+  const { rows: [{ get_profile: profile }] } = await as(CASEY, 'select public.get_profile($1)', [ALEX]);
+  assert.equal(profile.avatar_path, `${ALEX}/a1b2c3.jpg`);
+  const { rows: found } = await as(CASEY, "select id, avatar_path from public.search_people('alex')");
+  assert.equal(found.find((p) => p.id === ALEX)?.avatar_path, `${ALEX}/a1b2c3.jpg`);
+
+  await as(ALEX, 'update public.profiles set avatar_path = null where id = $1', [ALEX]);
 });

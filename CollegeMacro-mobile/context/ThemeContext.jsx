@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { supabase } from '../utils/config';
+import { fetchMySchool } from '../utils/schools';
 
 const ThemeContext = createContext();
 
@@ -8,9 +9,18 @@ export function ThemeProvider({ children }) {
   const systemTheme = useColorScheme();
   const [themePreference, setThemePreference] = useState('system');
   const [isDarkMode, setIsDarkMode] = useState(false);
+  // The signed-in student's school; its colors tint the base style.
+  const [school, setSchool] = useState(null);
 
   useEffect(() => {
     loadUserThemePreference();
+    const loadSchool = () => fetchMySchool().then(setSchool).catch(() => setSchool(null));
+    loadSchool();
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') setSchool(null);
+      else if (event === 'SIGNED_IN' || event === 'USER_UPDATED') loadSchool();
+    });
+    return () => data?.subscription?.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -53,7 +63,7 @@ export function ThemeProvider({ children }) {
   };
 
   return (
-    <ThemeContext.Provider value={{ isDarkMode, themePreference, changeTheme }}>
+    <ThemeContext.Provider value={{ isDarkMode, themePreference, changeTheme, school }}>
       {children}
     </ThemeContext.Provider>
   );

@@ -28,9 +28,9 @@ function SendButton({ onPress, disabled }) {
       accessibilityLabel="Send"
       accessibilityState={{ disabled }}
       hitSlop={6}
-      style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.ink, alignItems: "center", justifyContent: "center" }}
+      style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.primary, alignItems: "center", justifyContent: "center" }}
     >
-      <Ionicons name="arrow-up" size={20} color={c.inverse} />
+      <Ionicons name="arrow-up" size={20} color={c.onPrimary} />
     </Tap>
   );
 }
@@ -224,7 +224,7 @@ const makeStyles = (c) => ({
     paddingHorizontal: space.lg + space.xs,
   },
   bubble: { maxWidth: "85%", borderRadius: 22, paddingVertical: space.sm, paddingHorizontal: space.lg },
-  mine: { alignSelf: "flex-end", backgroundColor: c.ink },
+  mine: { alignSelf: "flex-end", backgroundColor: c.primary },
   theirs: { alignSelf: "flex-start", backgroundColor: c.surface },
   errorHead: { flexDirection: "row", alignItems: "center", gap: space.xs, marginBottom: space.xs },
   retry: { flexDirection: "row", alignItems: "center", gap: space.xs, alignSelf: "flex-start", paddingVertical: space.xs, paddingHorizontal: space.sm, marginTop: space.xs },

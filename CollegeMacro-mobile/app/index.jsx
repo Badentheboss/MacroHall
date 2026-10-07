@@ -1,20 +1,15 @@
 import React from "react";
-import { ScrollView, StatusBar, View, useWindowDimensions } from "react-native";
+import { Image, ScrollView, StatusBar, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppTheme, useStyles } from "../theme";
 import { Avatar, Button, FadeIn, LiveDot, MacroRing, ProgressBar, Txt } from "../components/kit";
 import { DEMO_MODE } from "../utils/config";
 
-// Friends in the hero collage. Emoji are their avatars (content, not icons).
-const FRIENDS = [
-  { emoji: "🧑🏽", color: "#E0452B" },
-  { emoji: "👩🏻", color: "#D99528" },
-  { emoji: "🧑🏾", color: "#5468C9" },
-  { emoji: "👱🏼‍♀️", color: "#C92F72" },
-];
+// Friends out right now, in the hero collage (default pictures, live rings).
+const FRIENDS = [1, 2, 3, 4];
 
-// Hinge-style welcome: a small collage of what the app does, a serif
+// Hinge-style welcome: the logo, a small collage of what the app does, a
 // headline, and the ways in.
 export default function Home({ navigation }) {
   const { c, isDark, fonts } = useAppTheme();
@@ -31,9 +26,13 @@ export default function Home({ navigation }) {
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={c.bg} />
       <ScrollView contentContainerStyle={styles.scroll} bounces={false} showsVerticalScrollIndicator={false}>
         <FadeIn style={styles.header}>
-          <Txt variant="h2" accessibilityRole="header">
-            MacroHall
-          </Txt>
+          <Image
+            source={isDark ? require("../assets/images/macrohall-logo-dark.png") : require("../assets/images/macrohall-logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityRole="header"
+            accessibilityLabel="Macrohall"
+          />
         </FadeIn>
 
         {/* Hero collage, composed from kit pieces instead of images. */}
@@ -67,9 +66,9 @@ export default function Home({ navigation }) {
               <View style={[styles.card, styles.friendsCard]}>
                 <View style={styles.avatarStack}>
                   {FRIENDS.map((friend, i) => (
-                    <View key={friend.emoji} style={[styles.avatarSlot, i > 0 && styles.avatarOverlap, { zIndex: FRIENDS.length - i }]}>
+                    <View key={friend} style={[styles.avatarSlot, i > 0 && styles.avatarOverlap, { zIndex: FRIENDS.length - i }]}>
                       <View style={styles.avatarBackdrop}>
-                        <Avatar emoji={friend.emoji} color={friend.color} size={40} live />
+                        <Avatar size={40} live />
                       </View>
                     </View>
                   ))}
@@ -104,7 +103,7 @@ export default function Home({ navigation }) {
         <FadeIn index={4} style={styles.copy}>
           <Txt variant="display" accessibilityRole="header">
             Eat well at the{"\n"}
-            <Txt variant="display" tone="accent" style={{ fontFamily: fonts.serifItalic }}>
+            <Txt variant="display" color={c.primary}>
               dining hall.
             </Txt>
           </Txt>
@@ -136,6 +135,7 @@ const makeStyles = (c, { space, radius }) => ({
   safe: { flex: 1, backgroundColor: c.bg },
   scroll: { flexGrow: 1, paddingHorizontal: space.lg, paddingBottom: space.lg },
   header: { alignItems: "center", paddingTop: space.md, paddingBottom: space.sm },
+  logo: { width: 176, height: 48 },
   collage: { flexGrow: 1, justifyContent: "center", marginVertical: space.lg },
   collageCompact: { marginVertical: space.sm },
   stageCompact: { height: 236 },

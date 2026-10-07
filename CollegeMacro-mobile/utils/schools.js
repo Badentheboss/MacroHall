@@ -35,7 +35,7 @@ export const todayInTimezone = (timezone) => {
   }
 };
 
-const SCHOOL_COLUMNS = 'id, slug, name, short_name, email_domains, timezone, status, city, state';
+const SCHOOL_COLUMNS = 'id, slug, name, short_name, email_domains, timezone, status, city, state, primary_color, secondary_color';
 
 export async function fetchSchools() {
   const { data, error } = await supabase.from('schools').select(SCHOOL_COLUMNS).order('name');

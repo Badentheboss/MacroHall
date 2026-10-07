@@ -11,6 +11,7 @@ const PARTS = [
   'migrations/002_multi_school_social.sql',
   'migrations/003_profiles.sql',
   'migrations/004_gyms_favorites.sql',
+  'migrations/005_school_colors_avatars.sql',
   'seed/schools.sql',
 ];
 

@@ -4,7 +4,7 @@ import React from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { radius, space, type, useAppTheme } from '../../theme';
+import { elevation, radius, space, type, useAppTheme } from '../../theme';
 
 const TONES = (c) => ({ ink: c.ink, muted: c.muted, faint: c.faint, accent: c.accent, inverse: c.inverse, positive: c.positive });
 
@@ -35,13 +35,15 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, content
 }
 
 // Flat white card on the cream background: no border, no heavy shadow.
+// White card on the cream background with one soft shadow. tone="primary"
+// (or the older "ink") is the Macrohall-green hero card; "sunken" is a well.
 export function Card({ children, tone = 'surface', padded = true, style, ...rest }) {
   const { c } = useAppTheme();
+  const hero = tone === 'primary' || tone === 'ink';
+  const background = tone === 'sunken' ? c.sunken : hero ? c.primary : c.surface;
   return (
-    <View
-      style={[{ backgroundColor: tone === 'sunken' ? c.sunken : tone === 'ink' ? c.ink : c.surface, borderRadius: radius.lg, padding: padded ? space.lg + 4 : 0, overflow: 'hidden' }, style]}
-      {...rest}
-    >
+    // No overflow clipping, so the shadow renders on iOS; clip inside if needed.
+    <View style={[{ backgroundColor: background, borderRadius: radius.lg, padding: padded ? space.lg + 4 : 0 }, tone === 'sunken' ? null : elevation(c), style]} {...rest}>
       {children}
     </View>
   );
@@ -64,12 +66,12 @@ export function Tap({ children, style, onPress, disabled, scaleTo = 0.97, ...res
   );
 }
 
-// Pill buttons. primary = ink (one per screen), secondary = sunken, ghost = text.
+// Pill buttons. primary = Macrohall green (one per screen), secondary = sunken, ghost = text.
 export function Button({ title, onPress, variant = 'primary', size = 'md', icon, loading, disabled, style, accessibilityLabel }) {
   const { c } = useAppTheme();
   const height = size === 'sm' ? 36 : size === 'lg' ? 56 : 48;
-  const background = variant === 'primary' ? c.ink : variant === 'accent' ? c.accent : variant === 'secondary' ? c.sunken : 'transparent';
-  const foreground = variant === 'primary' ? c.inverse : variant === 'accent' ? '#FFFFFF' : c.ink;
+  const background = variant === 'primary' ? c.primary : variant === 'accent' ? c.accent : variant === 'secondary' ? c.sunken : 'transparent';
+  const foreground = variant === 'primary' ? c.onPrimary : variant === 'accent' ? '#FFFFFF' : c.ink;
   return (
     <Tap
       onPress={onPress}
@@ -122,7 +124,7 @@ export function IconButton({ name, onPress, label, size = 22, tone = 'plain', co
   );
 }
 
-// Filter/selection pill. Active = ink, inactive = sunken.
+// Filter/selection pill. Active = Macrohall green, inactive = sunken.
 export function Chip({ label, active, onPress, icon, style }) {
   const { c } = useAppTheme();
   return (
@@ -130,10 +132,10 @@ export function Chip({ label, active, onPress, icon, style }) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: !!active }}
-      style={[{ height: 36, paddingHorizontal: space.lg, borderRadius: radius.pill, backgroundColor: active ? c.ink : c.sunken, flexDirection: 'row', alignItems: 'center', gap: 6 }, style]}
+      style={[{ height: 36, paddingHorizontal: space.lg, borderRadius: radius.pill, backgroundColor: active ? c.primary : c.sunken, flexDirection: 'row', alignItems: 'center', gap: 6 }, style]}
     >
-      {icon ? <Ionicons name={icon} size={15} color={active ? c.inverse : c.ink} /> : null}
-      <Txt variant="small" color={active ? c.inverse : c.ink} style={{ fontFamily: type.bodyStrong.fontFamily }}>
+      {icon ? <Ionicons name={icon} size={15} color={active ? c.onPrimary : c.ink} /> : null}
+      <Txt variant="small" color={active ? c.onPrimary : c.ink} style={{ fontFamily: type.bodyStrong.fontFamily }}>
         {label}
       </Txt>
     </Tap>
@@ -254,5 +256,30 @@ export function Row({ leading, title, subtitle, trailing, onPress, style }) {
     </Tap>
   ) : (
     content
+  );
+}
+
+// Food emoji on a soft tile, standing in for a dish photo.
+export function FoodThumb({ glyph, size = 56, style }) {
+  const { c } = useAppTheme();
+  return (
+    <View style={[{ width: size, height: size, borderRadius: Math.round(size * 0.28), backgroundColor: c.sunken, alignItems: 'center', justifyContent: 'center' }, style]}>
+      <Text style={{ fontSize: size * 0.5, lineHeight: size * 0.64 }}>{glyph}</Text>
+    </View>
+  );
+}
+
+// The student's school, in its colors: a small tinted pill with a dot in the
+// school's second color. Renders nothing before the school is known.
+export function SchoolBadge({ style }) {
+  const { c, school } = useAppTheme();
+  if (!school) return null;
+  return (
+    <View style={[{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, height: 26, paddingHorizontal: 10, borderRadius: radius.pill, backgroundColor: c.schoolSoft }, style]}>
+      <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: c.schoolAlt, borderWidth: 1.5, borderColor: c.school }} />
+      <Txt variant="caption" color={c.school} style={{ fontFamily: type.title.fontFamily }}>
+        {school.short_name || school.name}
+      </Txt>
+    </View>
   );
 }

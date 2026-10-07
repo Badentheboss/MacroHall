@@ -71,7 +71,15 @@ function createApp({ getSupabase = defaultSupabase, anthropic, extract = extract
         return res.status(403).json({ message: "Cannot delete another user's account." });
       }
 
-      const { error } = await getSupabase().auth.admin.deleteUser(req.user.id);
+      const supabase = getSupabase();
+      // Profile photos sit in a public bucket, so remove them with the account.
+      const avatars = supabase.storage?.from('avatars');
+      if (avatars) {
+        const { data: files } = await avatars.list(req.user.id);
+        if (files?.length) await avatars.remove(files.map((file) => `${req.user.id}/${file.name}`));
+      }
+
+      const { error } = await supabase.auth.admin.deleteUser(req.user.id);
       if (error) throw error;
 
       return res.json({ ok: true });

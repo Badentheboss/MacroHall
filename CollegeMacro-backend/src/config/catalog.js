@@ -18,8 +18,11 @@ const PT = 'America/Los_Angeles';
 const MI = 'America/Detroit';
 const IN = 'America/Indiana/Indianapolis';
 
+const { schoolColors } = require('./schoolColors');
+
 function school(slug, name, shortName, emailDomains, city, state, timezone, platform, platformVerified, status = 'coming_soon') {
-  return { slug, name, shortName, emailDomains, city, state, timezone, platform, platformVerified, status };
+  const [primaryColor = null, secondaryColor = null] = schoolColors[slug] || [];
+  return { slug, name, shortName, emailDomains, city, state, timezone, platform, platformVerified, status, primaryColor, secondaryColor };
 }
 
 const catalog = [

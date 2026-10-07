@@ -3,10 +3,10 @@ import React, { useEffect, useState } from "react";
 import "../utils/autoCheckIn";
 import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { View } from "react-native";
+import { Image, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFonts, InstrumentSerif_400Regular, InstrumentSerif_400Regular_Italic } from "@expo-google-fonts/instrument-serif";
 import {
+  useFonts,
   Manrope_400Regular,
   Manrope_500Medium,
   Manrope_600SemiBold,
@@ -39,7 +39,7 @@ import { fetchProfile, getMyUserId } from "../utils/profiles";
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
-// Shared header look: warm background, no rule, serif title on the left.
+// Shared header look: warm background, no rule, bold title on the left.
 function useHeaderStyle() {
   const { c, type } = useAppTheme();
   return {
@@ -52,20 +52,34 @@ function useHeaderStyle() {
   };
 }
 
-// Instagram puts your own picture in the tab bar.
+// Instagram puts your own picture in the tab bar (the default one until you add a photo).
 function MeTabIcon({ focused }: { focused: boolean }) {
   const { c } = useAppTheme();
-  const [me, setMe] = useState<{ avatar_emoji?: string; accent_color?: string } | null>(null);
+  const [path, setPath] = useState<string | null>(null);
   useEffect(() => {
     getMyUserId()
       .then((id) => (id ? fetchProfile(id) : null))
-      .then(setMe)
+      .then((me) => setPath(me?.avatar_path ?? null))
       .catch(() => {});
   }, []);
   return (
-    <View style={{ borderRadius: 16, borderWidth: 1.5, borderColor: focused ? c.ink : "transparent", padding: 1 }}>
-      <Avatar emoji={me?.avatar_emoji || "🙂"} color={me?.accent_color || c.accent} size={26} />
+    <View style={{ borderRadius: 16, borderWidth: 1.5, borderColor: focused ? c.school : "transparent", padding: 1 }}>
+      <Avatar path={path} size={26} />
     </View>
+  );
+}
+
+// The Macrohall wordmark, in a lighter green on dark backgrounds.
+function Wordmark() {
+  const { isDark } = useAppTheme();
+  return (
+    <Image
+      source={isDark ? require("../assets/images/macrohall-logo-dark.png") : require("../assets/images/macrohall-logo.png")}
+      style={{ width: 128, height: 35 }}
+      resizeMode="contain"
+      accessibilityRole="header"
+      accessibilityLabel="Macrohall"
+    />
   );
 }
 
@@ -86,7 +100,7 @@ function TabNavigator() {
       screenOptions={({ route }) => ({
         ...header,
         tabBarShowLabel: false,
-        tabBarActiveTintColor: c.ink,
+        tabBarActiveTintColor: c.school,
         tabBarInactiveTintColor: c.ink,
         tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.hairline, borderTopWidth: 1, height: 64, paddingTop: 6 },
         sceneStyle: { backgroundColor: c.bg },
@@ -102,9 +116,9 @@ function TabNavigator() {
         name="Dashboard"
         component={Dashboard}
         options={({ navigation }) => ({
-          title: "MacroHall",
+          title: "Macrohall",
           tabBarAccessibilityLabel: "Home",
-          headerTitleStyle: { ...header.headerTitleStyle, fontSize: 30 },
+          headerTitle: () => <Wordmark />,
           headerRight: () => (
             <View style={{ flexDirection: "row", marginRight: 8 }}>
               <IconButton name="sparkles-outline" label="Ask MacroHall" onPress={() => navigation.navigate("Ask")} />
@@ -159,8 +173,6 @@ function RootStack() {
 
 export default function Layout() {
   const [fontsLoaded] = useFonts({
-    InstrumentSerif_400Regular,
-    InstrumentSerif_400Regular_Italic,
     Manrope_400Regular,
     Manrope_500Medium,
     Manrope_600SemiBold,

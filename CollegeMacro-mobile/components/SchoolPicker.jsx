@@ -3,6 +3,7 @@ import { FlatList, Modal, StatusBar, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme, useStyles } from '../theme';
+import { schoolTones } from '../theme/school';
 import { Button, EmptyState, IconButton, Row, Tap, TextField, Txt } from './kit';
 
 // Full-screen searchable list of schools. Live schools are selectable;
@@ -83,6 +84,8 @@ export default function SchoolPicker({ visible, schools, onSelect, onClose, onRe
             const place = [school.city, school.state].filter(Boolean).join(', ');
             const domain = school.email_domains?.length ? `@${school.email_domains[0]}` : '';
             const initial = (school.short_name || school.name || '?').trim().charAt(0).toUpperCase();
+            // Each school's initial on its own color.
+            const tones = schoolTones(school, c, isDark);
             return (
               <Tap
                 onPress={() => {
@@ -97,8 +100,8 @@ export default function SchoolPicker({ visible, schools, onSelect, onClose, onRe
               >
                 <Row
                   leading={
-                    <View style={[styles.initialDisc, live ? styles.initialDiscLive : null]}>
-                      <Txt variant="h2" color={live ? c.accent : c.muted}>
+                    <View style={[styles.initialDisc, { backgroundColor: tones.school }]}>
+                      <Txt variant="h2" color={tones.onSchool}>
                         {initial}
                       </Txt>
                     </View>
@@ -181,7 +184,6 @@ const makeStyles = (c, { space, radius }) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  initialDiscLive: { backgroundColor: c.accentSoft },
   trailing: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.pill, paddingHorizontal: space.md, height: 26 },
   tagLive: { backgroundColor: c.accentSoft },

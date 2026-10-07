@@ -318,7 +318,9 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- Classmates by name or @username, with what the caller needs for a row.
-create or replace function public.search_people(p_query text)
+-- Dropped first: 005 adds a column to its result, which create or replace can't undo.
+drop function if exists public.search_people(text);
+create function public.search_people(p_query text)
 returns table (id uuid, display_name text, username text, avatar_emoji text, accent_color text, goal text, friendship text)
 language sql stable security definer set search_path = public as $$
   select p.id, p.display_name, p.username, p.avatar_emoji, p.accent_color, p.goal, public.friendship_state(p.id)

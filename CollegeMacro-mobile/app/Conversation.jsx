@@ -37,9 +37,9 @@ function SendButton({ onPress, disabled }) {
       accessibilityLabel="Send"
       accessibilityState={{ disabled }}
       hitSlop={6}
-      style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.ink, alignItems: "center", justifyContent: "center" }}
+      style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.primary, alignItems: "center", justifyContent: "center" }}
     >
-      <Ionicons name="arrow-up" size={20} color={c.inverse} />
+      <Ionicons name="arrow-up" size={20} color={c.onPrimary} />
     </Tap>
   );
 }
@@ -241,7 +241,7 @@ const makeStyles = (c) => ({
   empty: { flex: 1, justifyContent: "center" },
   stamp: { textAlign: "center", marginTop: space.xl, marginBottom: space.md },
   bubble: { maxWidth: "78%", borderRadius: 22, paddingVertical: space.sm, paddingHorizontal: space.lg },
-  mine: { alignSelf: "flex-end", backgroundColor: c.ink },
+  mine: { alignSelf: "flex-end", backgroundColor: c.primary },
   theirs: { alignSelf: "flex-start", backgroundColor: c.surface },
   seen: { alignSelf: "flex-end", marginTop: space.xs, marginRight: space.xs },
   footer: { backgroundColor: c.bg, paddingTop: space.sm, gap: space.sm },

@@ -23,11 +23,11 @@ const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60000).toISOStri
 const minutesFromNow = (minutes) => new Date(Date.now() + minutes * 60000).toISOString();
 
 const SCHOOLS = [
-  { id: 1, slug: 'umich', name: 'University of Michigan', short_name: 'Michigan', email_domains: ['umich.edu'], timezone: TIMEZONE, status: 'live', city: 'Ann Arbor', state: 'MI' },
-  { id: 2, slug: 'ohio-state', name: 'The Ohio State University', short_name: 'Ohio State', email_domains: ['osu.edu'], timezone: 'America/New_York', status: 'live', city: 'Columbus', state: 'OH' },
-  { id: 3, slug: 'purdue', name: 'Purdue University', short_name: 'Purdue', email_domains: ['purdue.edu'], timezone: 'America/Indiana/Indianapolis', status: 'live', city: 'West Lafayette', state: 'IN' },
-  { id: 4, slug: 'texas-am', name: 'Texas A&M University', short_name: 'Texas A&M', email_domains: ['tamu.edu'], timezone: 'America/Chicago', status: 'coming_soon', city: 'College Station', state: 'TX' },
-  { id: 5, slug: 'pitt', name: 'University of Pittsburgh', short_name: 'Pitt', email_domains: ['pitt.edu'], timezone: 'America/New_York', status: 'coming_soon', city: 'Pittsburgh', state: 'PA' },
+  { id: 1, slug: 'umich', primary_color: '#00274C', secondary_color: '#FFCB05', name: 'University of Michigan', short_name: 'Michigan', email_domains: ['umich.edu'], timezone: TIMEZONE, status: 'live', city: 'Ann Arbor', state: 'MI' },
+  { id: 2, slug: 'ohio-state', primary_color: '#BB0000', secondary_color: '#666666', name: 'The Ohio State University', short_name: 'Ohio State', email_domains: ['osu.edu'], timezone: 'America/New_York', status: 'live', city: 'Columbus', state: 'OH' },
+  { id: 3, slug: 'purdue', primary_color: '#CEB888', secondary_color: '#000000', name: 'Purdue University', short_name: 'Purdue', email_domains: ['purdue.edu'], timezone: 'America/Indiana/Indianapolis', status: 'live', city: 'West Lafayette', state: 'IN' },
+  { id: 4, slug: 'texas-am', primary_color: '#500000', secondary_color: '#FFFFFF', name: 'Texas A&M University', short_name: 'Texas A&M', email_domains: ['tamu.edu'], timezone: 'America/Chicago', status: 'coming_soon', city: 'College Station', state: 'TX' },
+  { id: 5, slug: 'pitt', primary_color: '#003594', secondary_color: '#FFB81C', name: 'University of Pittsburgh', short_name: 'Pitt', email_domains: ['pitt.edu'], timezone: 'America/New_York', status: 'coming_soon', city: 'Pittsburgh', state: 'PA' },
 ];
 
 const HALLS = [
@@ -136,7 +136,7 @@ const PEOPLE = [
   { id: 'demo-priya', display_name: 'Priya Patel', username: 'priya.eats', avatar_emoji: '🥑', accent_color: '#D81B60', goal: 'maintain', class_year: 2028, bio: 'Vegetarian · Mosher-Jordan regular', favorite_hall_id: 3 },
   { id: 'demo-sam', display_name: 'Sam Rivera', username: 'samrivera', avatar_emoji: '🏀', accent_color: '#FB8C00', goal: 'bulk', class_year: 2027, bio: 'IM basketball, 4,000 cal days', favorite_hall_id: 4 },
   { id: 'demo-alex', display_name: 'Alex Kim', username: 'alexk', avatar_emoji: '🍜', accent_color: '#00897B', goal: 'maintain', class_year: 2029, bio: 'Freshman, still learning the dining halls', favorite_hall_id: 6 },
-].map((p) => ({ ...p, school_id: 1, share_presence: true, track_gym: true, log_visibility: 'friends' }));
+].map((p) => ({ ...p, school_id: 1, avatar_path: null, share_presence: true, track_gym: true, log_visibility: 'friends' }));
 
 const logEntry = (dish, mealTime, servings = 1) => {
   const [name, subheader, calories, protein, carbs, fat] = dish;

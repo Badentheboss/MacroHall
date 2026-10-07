@@ -1098,7 +1098,9 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- Classmates by name or @username, with what the caller needs for a row.
-create or replace function public.search_people(p_query text)
+-- Dropped first: 005 adds a column to its result, which create or replace can't undo.
+drop function if exists public.search_people(text);
+create function public.search_people(p_query text)
 returns table (id uuid, display_name text, username text, avatar_emoji text, accent_color text, goal text, friendship text)
 language sql stable security definer set search_path = public as $$
   select p.id, p.display_name, p.username, p.avatar_emoji, p.accent_color, p.goal, public.friendship_state(p.id)
@@ -1599,69 +1601,228 @@ grant execute on function
 to authenticated;
 
 -- ======================================================================
+-- migrations/005_school_colors_avatars.sql
+-- ======================================================================
+-- 005: school colors and profile photos.
+-- Run after 004. Safe to re-run.
+
+-- ------------------------------------------------------------ school colors --
+-- Official colors tint the app for each school's students (seeded from
+-- src/config/schoolColors.js).
+alter table public.schools
+  add column if not exists primary_color text,
+  add column if not exists secondary_color text;
+
+alter table public.schools drop constraint if exists schools_color_format;
+alter table public.schools add constraint schools_color_format check (
+  (primary_color is null or primary_color ~ '^#[0-9A-Fa-f]{6}$')
+  and (secondary_color is null or secondary_color ~ '^#[0-9A-Fa-f]{6}$')
+);
+
+-- ----------------------------------------------------------- profile photos --
+-- Photos live in the public "avatars" storage bucket under the owner's folder.
+-- The profile stores only the object path, never a URL, so it can't point at
+-- an outside image, and the check keeps it inside the owner's folder.
+alter table public.profiles add column if not exists avatar_path text;
+
+alter table public.profiles drop constraint if exists profiles_avatar_path_format;
+alter table public.profiles add constraint profiles_avatar_path_format check (
+  avatar_path is null
+  or avatar_path ~ ('^' || id::text || '/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$')
+);
+
+grant update (avatar_path) on public.profiles to authenticated;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('avatars', 'avatars', true, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- Anyone can view a photo by its public URL; only the owner can add, replace
+-- or delete files in their own folder (avatars/<user id>/...).
+drop policy if exists "avatars: owner reads own folder" on storage.objects;
+create policy "avatars: owner reads own folder" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "avatars: owner uploads" on storage.objects;
+create policy "avatars: owner uploads" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "avatars: owner updates" on storage.objects;
+create policy "avatars: owner updates" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "avatars: owner deletes" on storage.objects;
+create policy "avatars: owner deletes" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ------------------------------------------- profile and search return photos --
+-- get_profile from 004 plus avatar_path.
+create or replace function public.get_profile(p_user uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  v_profile public.profiles;
+  v_can_log boolean;
+  v_today date;
+  v_result jsonb;
+begin
+  if not public.can_view_profile(p_user) then
+    return null;
+  end if;
+
+  select * into v_profile from public.profiles where id = p_user;
+  if not found then
+    return null;
+  end if;
+
+  v_can_log := public.can_view_log(p_user);
+  v_today := public.user_today(p_user);
+
+  v_result := jsonb_build_object(
+    'id', v_profile.id,
+    'display_name', v_profile.display_name,
+    'username', v_profile.username,
+    'bio', v_profile.bio,
+    'avatar_emoji', v_profile.avatar_emoji,
+    'avatar_path', v_profile.avatar_path,
+    'accent_color', v_profile.accent_color,
+    'goal', v_profile.goal,
+    'class_year', v_profile.class_year,
+    'school', (select coalesce(short_name, name) from public.schools where id = v_profile.school_id),
+    'favorite_hall', (select jsonb_build_object('id', id, 'name', name) from public.dining_halls where id = v_profile.favorite_hall_id),
+    'friendship', public.friendship_state(p_user),
+    'friend_count', (select count(*) from public.friendships where status = 'accepted' and p_user in (requester_id, addressee_id)),
+    'log_visibility', case when p_user = auth.uid() then v_profile.log_visibility end,
+    'share_dining', case when p_user = auth.uid() then v_profile.share_presence end,
+    'track_gym', case when p_user = auth.uid() then v_profile.track_gym end,
+    'can_view_log', v_can_log,
+    'today', v_today
+  );
+
+  if v_can_log then
+    v_result := v_result || jsonb_build_object(
+      'stats', jsonb_build_object(
+        'streak', public.log_streak(p_user),
+        'days_logged_30', (select count(*) from public.daily_logs where user_id = p_user and day > v_today - 30),
+        'avg_calories_7', (select round(avg(calories)) from public.daily_logs where user_id = p_user and day > v_today - 7),
+        'avg_protein_7', (select round(avg(protein)) from public.daily_logs where user_id = p_user and day > v_today - 7)
+      ),
+      'usuals', coalesce((
+        select jsonb_agg(u order by u.times desc, u.name)
+        from (
+          select min(e ->> 'name') as name,
+                 count(*) as times,
+                 round(avg(public.jnum(e -> 'protein') / greatest(public.jnum(e -> 'servings'), 1))) as protein,
+                 round(avg(public.jnum(e -> 'calories') / greatest(public.jnum(e -> 'servings'), 1))) as calories
+          from public.daily_logs d, jsonb_array_elements(d.entries) e
+          where d.user_id = p_user and d.day > v_today - 30 and e ->> 'name' is not null
+          group by lower(e ->> 'name')
+          order by count(*) desc, min(e ->> 'name')
+          limit 8
+        ) u
+      ), '[]'::jsonb),
+      'favorites', coalesce((
+        select jsonb_agg(f.dish_name order by f.created_at desc)
+        from (select dish_name, created_at from public.favorite_dishes where user_id = p_user order by created_at desc limit 12) f
+      ), '[]'::jsonb),
+      'gym', case when v_profile.track_gym then public.gym_stats(p_user) end
+    );
+  end if;
+
+  return v_result;
+end $$;
+
+drop function if exists public.search_people(text);
+create function public.search_people(p_query text)
+returns table (id uuid, display_name text, username text, avatar_emoji text, avatar_path text, accent_color text, goal text, friendship text)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.display_name, p.username, p.avatar_emoji, p.avatar_path, p.accent_color, p.goal, public.friendship_state(p.id)
+  from public.profiles p,
+       lateral (select replace(replace(ltrim(btrim(p_query), '@'), '%', ''), '_', '\_') as q) term
+  where auth.uid() is not null
+    and p.school_id = public.my_school_id()
+    and p.id <> auth.uid()
+    and char_length(term.q) >= 2
+    and (p.display_name ilike '%' || term.q || '%' or p.username ilike term.q || '%')
+    and not public.is_blocked(auth.uid(), p.id)
+  order by (p.username ilike term.q || '%') desc, p.display_name
+  limit 25
+$$;
+
+revoke execute on function public.search_people(text) from public, anon;
+grant execute on function public.search_people(text) to authenticated;
+
+-- ======================================================================
 -- seed/schools.sql
 -- ======================================================================
 -- Generated by `npm run db:seed-sql` from src/config/catalog.js. Do not edit by hand.
-insert into public.schools (slug, name, short_name, email_domains, city, state, timezone, menu_platform, status)
+insert into public.schools (slug, name, short_name, email_domains, city, state, timezone, menu_platform, status, primary_color, secondary_color)
 values
-  ('umich', 'University of Michigan', 'Michigan', array['umich.edu']::text[], 'Ann Arbor', 'MI', 'America/Detroit', 'custom-html', 'live'),
-  ('ohio-state', 'The Ohio State University', 'Ohio State', array['osu.edu']::text[], 'Columbus', 'OH', 'America/New_York', 'nutrislice', 'coming_soon'),
-  ('wisconsin', 'University of Wisconsin–Madison', 'Wisconsin', array['wisc.edu']::text[], 'Madison', 'WI', 'America/Chicago', 'nutrislice', 'coming_soon'),
-  ('georgia-tech', 'Georgia Institute of Technology', 'Georgia Tech', array['gatech.edu']::text[], 'Atlanta', 'GA', 'America/New_York', 'nutrislice', 'coming_soon'),
-  ('virginia-tech', 'Virginia Tech', 'Virginia Tech', array['vt.edu']::text[], 'Blacksburg', 'VA', 'America/New_York', 'nutrislice', 'coming_soon'),
-  ('indiana', 'Indiana University Bloomington', 'Indiana', array['iu.edu', 'indiana.edu']::text[], 'Bloomington', 'IN', 'America/Indiana/Indianapolis', 'nutrislice', 'coming_soon'),
-  ('cu-boulder', 'University of Colorado Boulder', 'CU Boulder', array['colorado.edu']::text[], 'Boulder', 'CO', 'America/Denver', 'nutrislice', 'coming_soon'),
-  ('unlv', 'University of Nevada, Las Vegas', 'UNLV', array['unlv.edu', 'unlv.nevada.edu']::text[], 'Las Vegas', 'NV', 'America/Los_Angeles', 'nutrislice', 'coming_soon'),
-  ('texas-am', 'Texas A&M University', 'Texas A&M', array['tamu.edu']::text[], 'College Station', 'TX', 'America/Chicago', 'dineoncampus', 'coming_soon'),
-  ('pitt', 'University of Pittsburgh', 'Pitt', array['pitt.edu']::text[], 'Pittsburgh', 'PA', 'America/New_York', 'dineoncampus', 'coming_soon'),
-  ('houston', 'University of Houston', 'Houston', array['uh.edu']::text[], 'Houston', 'TX', 'America/Chicago', 'dineoncampus', 'coming_soon'),
-  ('michigan-tech', 'Michigan Technological University', 'Michigan Tech', array['mtu.edu']::text[], 'Houghton', 'MI', 'America/Detroit', 'dineoncampus', 'coming_soon'),
-  ('purdue', 'Purdue University', 'Purdue', array['purdue.edu']::text[], 'West Lafayette', 'IN', 'America/Indiana/Indianapolis', 'purdue-hfs', 'coming_soon'),
-  ('penn-state', 'Penn State University Park', 'Penn State', array['psu.edu']::text[], 'University Park', 'PA', 'America/New_York', 'foodpro', 'coming_soon'),
-  ('rutgers', 'Rutgers University–New Brunswick', 'Rutgers', array['rutgers.edu']::text[], 'New Brunswick', 'NJ', 'America/New_York', 'foodpro', 'coming_soon'),
-  ('uconn', 'University of Connecticut', 'UConn', array['uconn.edu']::text[], 'Storrs', 'CT', 'America/New_York', 'foodpro', 'coming_soon'),
-  ('ut-austin', 'The University of Texas at Austin', 'UT Austin', array['utexas.edu']::text[], 'Austin', 'TX', 'America/Chicago', 'foodpro', 'coming_soon'),
-  ('uc-riverside', 'University of California, Riverside', 'UC Riverside', array['ucr.edu']::text[], 'Riverside', 'CA', 'America/Los_Angeles', 'foodpro', 'coming_soon'),
-  ('michigan-state', 'Michigan State University', 'Michigan State', array['msu.edu']::text[], 'East Lansing', 'MI', 'America/Detroit', 'custom-html', 'coming_soon'),
-  ('maryland', 'University of Maryland', 'Maryland', array['umd.edu']::text[], 'College Park', 'MD', 'America/New_York', 'custom-html', 'coming_soon'),
-  ('ucla', 'University of California, Los Angeles', 'UCLA', array['ucla.edu']::text[], 'Los Angeles', 'CA', 'America/Los_Angeles', 'custom-html', 'coming_soon'),
-  ('colorado-state', 'Colorado State University', 'Colorado State', array['colostate.edu']::text[], 'Fort Collins', 'CO', 'America/Denver', 'netnutrition', 'coming_soon'),
-  ('oklahoma-state', 'Oklahoma State University', 'Oklahoma State', array['okstate.edu']::text[], 'Stillwater', 'OK', 'America/Chicago', 'netnutrition', 'coming_soon'),
-  ('fresno-state', 'California State University, Fresno', 'Fresno State', array['fresnostate.edu', 'csufresno.edu']::text[], 'Fresno', 'CA', 'America/Los_Angeles', 'pdf', 'coming_soon'),
-  ('minnesota', 'University of Minnesota Twin Cities', 'Minnesota', array['umn.edu']::text[], 'Minneapolis', 'MN', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('illinois', 'University of Illinois Urbana-Champaign', 'Illinois', array['illinois.edu']::text[], 'Champaign', 'IL', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('iowa', 'University of Iowa', 'Iowa', array['uiowa.edu']::text[], 'Iowa City', 'IA', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('nebraska', 'University of Nebraska–Lincoln', 'Nebraska', array['unl.edu']::text[], 'Lincoln', 'NE', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('florida', 'University of Florida', 'Florida', array['ufl.edu']::text[], 'Gainesville', 'FL', 'America/New_York', 'unknown', 'coming_soon'),
-  ('georgia', 'University of Georgia', 'Georgia', array['uga.edu']::text[], 'Athens', 'GA', 'America/New_York', 'unknown', 'coming_soon'),
-  ('alabama', 'The University of Alabama', 'Alabama', array['ua.edu']::text[], 'Tuscaloosa', 'AL', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('auburn', 'Auburn University', 'Auburn', array['auburn.edu']::text[], 'Auburn', 'AL', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('lsu', 'Louisiana State University', 'LSU', array['lsu.edu']::text[], 'Baton Rouge', 'LA', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('tennessee', 'University of Tennessee, Knoxville', 'Tennessee', array['utk.edu']::text[], 'Knoxville', 'TN', 'America/New_York', 'unknown', 'coming_soon'),
-  ('arizona-state', 'Arizona State University', 'Arizona State', array['asu.edu']::text[], 'Tempe', 'AZ', 'America/Phoenix', 'unknown', 'coming_soon'),
-  ('arizona', 'University of Arizona', 'Arizona', array['arizona.edu']::text[], 'Tucson', 'AZ', 'America/Phoenix', 'unknown', 'coming_soon'),
-  ('utah', 'University of Utah', 'Utah', array['utah.edu']::text[], 'Salt Lake City', 'UT', 'America/Denver', 'unknown', 'coming_soon'),
-  ('florida-state', 'Florida State University', 'Florida State', array['fsu.edu']::text[], 'Tallahassee', 'FL', 'America/New_York', 'unknown', 'coming_soon'),
-  ('ucf', 'University of Central Florida', 'UCF', array['ucf.edu']::text[], 'Orlando', 'FL', 'America/New_York', 'unknown', 'coming_soon'),
-  ('clemson', 'Clemson University', 'Clemson', array['clemson.edu']::text[], 'Clemson', 'SC', 'America/New_York', 'unknown', 'coming_soon'),
-  ('unc', 'University of North Carolina at Chapel Hill', 'UNC', array['unc.edu']::text[], 'Chapel Hill', 'NC', 'America/New_York', 'unknown', 'coming_soon'),
-  ('nc-state', 'North Carolina State University', 'NC State', array['ncsu.edu']::text[], 'Raleigh', 'NC', 'America/New_York', 'unknown', 'coming_soon'),
-  ('virginia', 'University of Virginia', 'UVA', array['virginia.edu']::text[], 'Charlottesville', 'VA', 'America/New_York', 'unknown', 'coming_soon'),
-  ('iowa-state', 'Iowa State University', 'Iowa State', array['iastate.edu']::text[], 'Ames', 'IA', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('texas-tech', 'Texas Tech University', 'Texas Tech', array['ttu.edu']::text[], 'Lubbock', 'TX', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('kentucky', 'University of Kentucky', 'Kentucky', array['uky.edu']::text[], 'Lexington', 'KY', 'America/New_York', 'unknown', 'coming_soon'),
-  ('missouri', 'University of Missouri', 'Mizzou', array['missouri.edu', 'umsystem.edu']::text[], 'Columbia', 'MO', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('arkansas', 'University of Arkansas', 'Arkansas', array['uark.edu']::text[], 'Fayetteville', 'AR', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('south-carolina', 'University of South Carolina', 'South Carolina', array['sc.edu']::text[], 'Columbia', 'SC', 'America/New_York', 'unknown', 'coming_soon'),
-  ('oklahoma', 'University of Oklahoma', 'Oklahoma', array['ou.edu']::text[], 'Norman', 'OK', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('kansas-state', 'Kansas State University', 'K-State', array['ksu.edu']::text[], 'Manhattan', 'KS', 'America/Chicago', 'unknown', 'coming_soon'),
-  ('cincinnati', 'University of Cincinnati', 'Cincinnati', array['uc.edu']::text[], 'Cincinnati', 'OH', 'America/New_York', 'unknown', 'coming_soon'),
-  ('west-virginia', 'West Virginia University', 'WVU', array['wvu.edu']::text[], 'Morgantown', 'WV', 'America/New_York', 'unknown', 'coming_soon'),
-  ('uc-berkeley', 'University of California, Berkeley', 'Cal', array['berkeley.edu']::text[], 'Berkeley', 'CA', 'America/Los_Angeles', 'unknown', 'coming_soon'),
-  ('uc-san-diego', 'University of California San Diego', 'UC San Diego', array['ucsd.edu']::text[], 'La Jolla', 'CA', 'America/Los_Angeles', 'unknown', 'coming_soon'),
-  ('uc-davis', 'University of California, Davis', 'UC Davis', array['ucdavis.edu']::text[], 'Davis', 'CA', 'America/Los_Angeles', 'unknown', 'coming_soon'),
-  ('umass', 'University of Massachusetts Amherst', 'UMass', array['umass.edu']::text[], 'Amherst', 'MA', 'America/New_York', 'unknown', 'coming_soon'),
-  ('oregon', 'University of Oregon', 'Oregon', array['uoregon.edu']::text[], 'Eugene', 'OR', 'America/Los_Angeles', 'unknown', 'coming_soon')
+  ('umich', 'University of Michigan', 'Michigan', array['umich.edu']::text[], 'Ann Arbor', 'MI', 'America/Detroit', 'custom-html', 'live', '#00274C', '#FFCB05'),
+  ('ohio-state', 'The Ohio State University', 'Ohio State', array['osu.edu']::text[], 'Columbus', 'OH', 'America/New_York', 'nutrislice', 'coming_soon', '#BB0000', '#666666'),
+  ('wisconsin', 'University of Wisconsin–Madison', 'Wisconsin', array['wisc.edu']::text[], 'Madison', 'WI', 'America/Chicago', 'nutrislice', 'coming_soon', '#C5050C', '#FFFFFF'),
+  ('georgia-tech', 'Georgia Institute of Technology', 'Georgia Tech', array['gatech.edu']::text[], 'Atlanta', 'GA', 'America/New_York', 'nutrislice', 'coming_soon', '#B3A369', '#003057'),
+  ('virginia-tech', 'Virginia Tech', 'Virginia Tech', array['vt.edu']::text[], 'Blacksburg', 'VA', 'America/New_York', 'nutrislice', 'coming_soon', '#861F41', '#E5751F'),
+  ('indiana', 'Indiana University Bloomington', 'Indiana', array['iu.edu', 'indiana.edu']::text[], 'Bloomington', 'IN', 'America/Indiana/Indianapolis', 'nutrislice', 'coming_soon', '#990000', '#EEEDEB'),
+  ('cu-boulder', 'University of Colorado Boulder', 'CU Boulder', array['colorado.edu']::text[], 'Boulder', 'CO', 'America/Denver', 'nutrislice', 'coming_soon', '#CFB87C', '#000000'),
+  ('unlv', 'University of Nevada, Las Vegas', 'UNLV', array['unlv.edu', 'unlv.nevada.edu']::text[], 'Las Vegas', 'NV', 'America/Los_Angeles', 'nutrislice', 'coming_soon', '#B10202', '#666666'),
+  ('texas-am', 'Texas A&M University', 'Texas A&M', array['tamu.edu']::text[], 'College Station', 'TX', 'America/Chicago', 'dineoncampus', 'coming_soon', '#500000', '#FFFFFF'),
+  ('pitt', 'University of Pittsburgh', 'Pitt', array['pitt.edu']::text[], 'Pittsburgh', 'PA', 'America/New_York', 'dineoncampus', 'coming_soon', '#003594', '#FFB81C'),
+  ('houston', 'University of Houston', 'Houston', array['uh.edu']::text[], 'Houston', 'TX', 'America/Chicago', 'dineoncampus', 'coming_soon', '#C8102E', '#FFFFFF'),
+  ('michigan-tech', 'Michigan Technological University', 'Michigan Tech', array['mtu.edu']::text[], 'Houghton', 'MI', 'America/Detroit', 'dineoncampus', 'coming_soon', '#FFCD00', '#000000'),
+  ('purdue', 'Purdue University', 'Purdue', array['purdue.edu']::text[], 'West Lafayette', 'IN', 'America/Indiana/Indianapolis', 'purdue-hfs', 'coming_soon', '#CEB888', '#000000'),
+  ('penn-state', 'Penn State University Park', 'Penn State', array['psu.edu']::text[], 'University Park', 'PA', 'America/New_York', 'foodpro', 'coming_soon', '#1E407C', '#001E44'),
+  ('rutgers', 'Rutgers University–New Brunswick', 'Rutgers', array['rutgers.edu']::text[], 'New Brunswick', 'NJ', 'America/New_York', 'foodpro', 'coming_soon', '#CC0033', '#5F6A72'),
+  ('uconn', 'University of Connecticut', 'UConn', array['uconn.edu']::text[], 'Storrs', 'CT', 'America/New_York', 'foodpro', 'coming_soon', '#000E2F', '#FFFFFF'),
+  ('ut-austin', 'The University of Texas at Austin', 'UT Austin', array['utexas.edu']::text[], 'Austin', 'TX', 'America/Chicago', 'foodpro', 'coming_soon', '#BF5700', '#333F48'),
+  ('uc-riverside', 'University of California, Riverside', 'UC Riverside', array['ucr.edu']::text[], 'Riverside', 'CA', 'America/Los_Angeles', 'foodpro', 'coming_soon', '#003DA5', '#FFB81C'),
+  ('michigan-state', 'Michigan State University', 'Michigan State', array['msu.edu']::text[], 'East Lansing', 'MI', 'America/Detroit', 'custom-html', 'coming_soon', '#18453B', '#FFFFFF'),
+  ('maryland', 'University of Maryland', 'Maryland', array['umd.edu']::text[], 'College Park', 'MD', 'America/New_York', 'custom-html', 'coming_soon', '#E21833', '#FFD200'),
+  ('ucla', 'University of California, Los Angeles', 'UCLA', array['ucla.edu']::text[], 'Los Angeles', 'CA', 'America/Los_Angeles', 'custom-html', 'coming_soon', '#2774AE', '#FFD100'),
+  ('colorado-state', 'Colorado State University', 'Colorado State', array['colostate.edu']::text[], 'Fort Collins', 'CO', 'America/Denver', 'netnutrition', 'coming_soon', '#1E4D2B', '#C8C372'),
+  ('oklahoma-state', 'Oklahoma State University', 'Oklahoma State', array['okstate.edu']::text[], 'Stillwater', 'OK', 'America/Chicago', 'netnutrition', 'coming_soon', '#FF7300', '#000000'),
+  ('fresno-state', 'California State University, Fresno', 'Fresno State', array['fresnostate.edu', 'csufresno.edu']::text[], 'Fresno', 'CA', 'America/Los_Angeles', 'pdf', 'coming_soon', '#DB0032', '#13284C'),
+  ('minnesota', 'University of Minnesota Twin Cities', 'Minnesota', array['umn.edu']::text[], 'Minneapolis', 'MN', 'America/Chicago', 'unknown', 'coming_soon', '#7A0019', '#FFCC33'),
+  ('illinois', 'University of Illinois Urbana-Champaign', 'Illinois', array['illinois.edu']::text[], 'Champaign', 'IL', 'America/Chicago', 'unknown', 'coming_soon', '#E84A27', '#13294B'),
+  ('iowa', 'University of Iowa', 'Iowa', array['uiowa.edu']::text[], 'Iowa City', 'IA', 'America/Chicago', 'unknown', 'coming_soon', '#FFCD00', '#000000'),
+  ('nebraska', 'University of Nebraska–Lincoln', 'Nebraska', array['unl.edu']::text[], 'Lincoln', 'NE', 'America/Chicago', 'unknown', 'coming_soon', '#E41C38', '#FDF2D9'),
+  ('florida', 'University of Florida', 'Florida', array['ufl.edu']::text[], 'Gainesville', 'FL', 'America/New_York', 'unknown', 'coming_soon', '#0021A5', '#FA4616'),
+  ('georgia', 'University of Georgia', 'Georgia', array['uga.edu']::text[], 'Athens', 'GA', 'America/New_York', 'unknown', 'coming_soon', '#BA0C2F', '#000000'),
+  ('alabama', 'The University of Alabama', 'Alabama', array['ua.edu']::text[], 'Tuscaloosa', 'AL', 'America/Chicago', 'unknown', 'coming_soon', '#9E1B32', '#828A8F'),
+  ('auburn', 'Auburn University', 'Auburn', array['auburn.edu']::text[], 'Auburn', 'AL', 'America/Chicago', 'unknown', 'coming_soon', '#0C2340', '#E87722'),
+  ('lsu', 'Louisiana State University', 'LSU', array['lsu.edu']::text[], 'Baton Rouge', 'LA', 'America/Chicago', 'unknown', 'coming_soon', '#461D7C', '#FDD023'),
+  ('tennessee', 'University of Tennessee, Knoxville', 'Tennessee', array['utk.edu']::text[], 'Knoxville', 'TN', 'America/New_York', 'unknown', 'coming_soon', '#FF8200', '#58595B'),
+  ('arizona-state', 'Arizona State University', 'Arizona State', array['asu.edu']::text[], 'Tempe', 'AZ', 'America/Phoenix', 'unknown', 'coming_soon', '#8C1D40', '#FFC627'),
+  ('arizona', 'University of Arizona', 'Arizona', array['arizona.edu']::text[], 'Tucson', 'AZ', 'America/Phoenix', 'unknown', 'coming_soon', '#AB0520', '#0C234B'),
+  ('utah', 'University of Utah', 'Utah', array['utah.edu']::text[], 'Salt Lake City', 'UT', 'America/Denver', 'unknown', 'coming_soon', '#BE0000', '#808080'),
+  ('florida-state', 'Florida State University', 'Florida State', array['fsu.edu']::text[], 'Tallahassee', 'FL', 'America/New_York', 'unknown', 'coming_soon', '#782F40', '#CEB888'),
+  ('ucf', 'University of Central Florida', 'UCF', array['ucf.edu']::text[], 'Orlando', 'FL', 'America/New_York', 'unknown', 'coming_soon', '#BA9B37', '#000000'),
+  ('clemson', 'Clemson University', 'Clemson', array['clemson.edu']::text[], 'Clemson', 'SC', 'America/New_York', 'unknown', 'coming_soon', '#F56600', '#522D80'),
+  ('unc', 'University of North Carolina at Chapel Hill', 'UNC', array['unc.edu']::text[], 'Chapel Hill', 'NC', 'America/New_York', 'unknown', 'coming_soon', '#7BAFD4', '#13294B'),
+  ('nc-state', 'North Carolina State University', 'NC State', array['ncsu.edu']::text[], 'Raleigh', 'NC', 'America/New_York', 'unknown', 'coming_soon', '#CC0000', '#000000'),
+  ('virginia', 'University of Virginia', 'UVA', array['virginia.edu']::text[], 'Charlottesville', 'VA', 'America/New_York', 'unknown', 'coming_soon', '#232D4B', '#E57200'),
+  ('iowa-state', 'Iowa State University', 'Iowa State', array['iastate.edu']::text[], 'Ames', 'IA', 'America/Chicago', 'unknown', 'coming_soon', '#C8102E', '#F1BE48'),
+  ('texas-tech', 'Texas Tech University', 'Texas Tech', array['ttu.edu']::text[], 'Lubbock', 'TX', 'America/Chicago', 'unknown', 'coming_soon', '#CC0000', '#000000'),
+  ('kentucky', 'University of Kentucky', 'Kentucky', array['uky.edu']::text[], 'Lexington', 'KY', 'America/New_York', 'unknown', 'coming_soon', '#0033A0', '#FFFFFF'),
+  ('missouri', 'University of Missouri', 'Mizzou', array['missouri.edu', 'umsystem.edu']::text[], 'Columbia', 'MO', 'America/Chicago', 'unknown', 'coming_soon', '#F1B82D', '#000000'),
+  ('arkansas', 'University of Arkansas', 'Arkansas', array['uark.edu']::text[], 'Fayetteville', 'AR', 'America/Chicago', 'unknown', 'coming_soon', '#9D2235', '#FFFFFF'),
+  ('south-carolina', 'University of South Carolina', 'South Carolina', array['sc.edu']::text[], 'Columbia', 'SC', 'America/New_York', 'unknown', 'coming_soon', '#73000A', '#000000'),
+  ('oklahoma', 'University of Oklahoma', 'Oklahoma', array['ou.edu']::text[], 'Norman', 'OK', 'America/Chicago', 'unknown', 'coming_soon', '#841617', '#FDF9D8'),
+  ('kansas-state', 'Kansas State University', 'K-State', array['ksu.edu']::text[], 'Manhattan', 'KS', 'America/Chicago', 'unknown', 'coming_soon', '#512888', '#D1D1D1'),
+  ('cincinnati', 'University of Cincinnati', 'Cincinnati', array['uc.edu']::text[], 'Cincinnati', 'OH', 'America/New_York', 'unknown', 'coming_soon', '#E00122', '#000000'),
+  ('west-virginia', 'West Virginia University', 'WVU', array['wvu.edu']::text[], 'Morgantown', 'WV', 'America/New_York', 'unknown', 'coming_soon', '#002855', '#EAAA00'),
+  ('uc-berkeley', 'University of California, Berkeley', 'Cal', array['berkeley.edu']::text[], 'Berkeley', 'CA', 'America/Los_Angeles', 'unknown', 'coming_soon', '#003262', '#FDB515'),
+  ('uc-san-diego', 'University of California San Diego', 'UC San Diego', array['ucsd.edu']::text[], 'La Jolla', 'CA', 'America/Los_Angeles', 'unknown', 'coming_soon', '#182B49', '#C69214'),
+  ('uc-davis', 'University of California, Davis', 'UC Davis', array['ucdavis.edu']::text[], 'Davis', 'CA', 'America/Los_Angeles', 'unknown', 'coming_soon', '#022851', '#FFBF00'),
+  ('umass', 'University of Massachusetts Amherst', 'UMass', array['umass.edu']::text[], 'Amherst', 'MA', 'America/New_York', 'unknown', 'coming_soon', '#881C1C', '#212721'),
+  ('oregon', 'University of Oregon', 'Oregon', array['uoregon.edu']::text[], 'Eugene', 'OR', 'America/Los_Angeles', 'unknown', 'coming_soon', '#154733', '#FEE123')
 on conflict (slug) do update set
   name = excluded.name,
   short_name = excluded.short_name,
@@ -1670,6 +1831,8 @@ on conflict (slug) do update set
   state = excluded.state,
   timezone = excluded.timezone,
   menu_platform = excluded.menu_platform,
+  primary_color = excluded.primary_color,
+  secondary_color = excluded.secondary_color,
   status = case when public.schools.status = 'live' then 'live' else excluded.status end,
   updated_at = now();
 

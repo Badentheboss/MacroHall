@@ -29,6 +29,7 @@ import {
   MacroRing,
   NumberTicker,
   ProgressBar,
+  SchoolBadge,
   Screen,
   Segmented,
   Tap,
@@ -549,6 +550,7 @@ export default function Dashboard() {
     <>
       <Screen>
         <FadeIn index={0} style={styles.intro}>
+          <SchoolBadge style={{ marginBottom: space.sm }} />
           <Txt variant="overline" tone="muted">{formatDate(currentDate)}</Txt>
           <Txt variant="h1" accessibilityRole="header">
             {remainingCalories > 0 ? `${formatCount(remainingCalories)} cal to go` : 'Goal hit'}
@@ -563,7 +565,7 @@ export default function Dashboard() {
               <IconButton name="create-outline" label="Edit calorie goal" tone="filled" size={18} onPress={openEditModal} />
             </View>
             <View style={styles.heroBody}>
-              <MacroRing progress={nutritionTotals.calories / calorieGoal} size={168} stroke={12} color={caloriesOver ? c.accent : c.ink}>
+              <MacroRing progress={nutritionTotals.calories / calorieGoal} size={168} stroke={12} color={caloriesOver ? c.accent : c.school}>
                 <View
                   style={styles.ringCenter}
                   accessible
@@ -747,7 +749,7 @@ export default function Dashboard() {
                 <Ionicons
                   name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
                   size={24}
-                  color={isSelected ? c.ink : c.faint}
+                  color={isSelected ? c.primary : c.faint}
                 />
               </Tap>
             );

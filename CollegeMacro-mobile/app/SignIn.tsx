@@ -29,7 +29,7 @@ type Props = {
   navigation: SignInScreenNavigationProp;
 };
 
-// Bottom sheet on a dimmed backdrop: grabber, serif title, then content.
+// Bottom sheet on a dimmed backdrop: grabber, title, then content.
 function Sheet({
   visible,
   onClose,

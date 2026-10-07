@@ -239,6 +239,20 @@ class Query {
   }
 }
 
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+function bytesToBase64(bytes) {
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const [a, b = 0, c = 0] = [bytes[i], bytes[i + 1], bytes[i + 2]];
+    const chunk = (a << 16) | (b << 8) | c;
+    out += B64[(chunk >> 18) & 63] + B64[(chunk >> 12) & 63];
+    out += i + 1 < bytes.length ? B64[(chunk >> 6) & 63] : '=';
+    out += i + 2 < bytes.length ? B64[chunk & 63] : '=';
+  }
+  return out;
+}
+
 export function createDemoClient() {
   const db = createSeed();
   const user = { id: ME, email: 'demo@umich.edu', user_metadata: { username: 'demo_wolverine', school_id: 1 } };
@@ -246,6 +260,7 @@ export function createDemoClient() {
   const listeners = [];
   const authListeners = [];
   let signedIn = true;
+  const photos = new Map();
   let nextId = 1000;
 
   const profileOf = (id) => db.profiles.find((p) => p.id === id);
@@ -357,6 +372,7 @@ export function createDemoClient() {
         username: profile.username,
         bio: profile.bio,
         avatar_emoji: profile.avatar_emoji,
+        avatar_path: profile.avatar_path,
         accent_color: profile.accent_color,
         goal: profile.goal,
         class_year: profile.class_year,
@@ -409,7 +425,7 @@ export function createDemoClient() {
       return ok(
         db.profiles
           .filter((p) => p.id !== ME && (p.display_name.toLowerCase().includes(query) || p.username.toLowerCase().includes(query)))
-          .map(({ id, display_name, username, avatar_emoji, accent_color, goal }) => ({ id, display_name, username, avatar_emoji, accent_color, goal, friendship: friendship(id) }))
+          .map(({ id, display_name, username, avatar_emoji, avatar_path, accent_color, goal }) => ({ id, display_name, username, avatar_emoji, avatar_path, accent_color, goal, friendship: friendship(id) }))
       );
     },
 
@@ -572,6 +588,22 @@ export function createDemoClient() {
       const handler = rpcs[name];
       if (!handler) return fail(`Demo mode doesn't implement ${name}.`);
       return handler(args);
+    },
+
+    // Profile photos stay in memory as data URLs.
+    storage: {
+      from: () => ({
+        getPublicUrl: (path) => ({ data: { publicUrl: photos.get(path) || null } }),
+        upload: async (path, bytes, { contentType = 'image/jpeg' } = {}) => {
+          photos.set(path, `data:${contentType};base64,${bytesToBase64(bytes)}`);
+          return ok({ path });
+        },
+        remove: async (paths) => {
+          for (const path of paths) photos.delete(path);
+          return ok([]);
+        },
+        list: async (folder) => ok([...photos.keys()].filter((p) => p.startsWith(`${folder}/`)).map((p) => ({ name: p.split('/')[1] }))),
+      }),
     },
 
     channel() {
