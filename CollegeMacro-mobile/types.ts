@@ -11,7 +11,8 @@ export type RootStackParamList = {
   Settings: undefined;
   UserProfile: { firstTimeSetup?: boolean } | undefined;
   Friends: undefined; // Tab screen
-  Ask: undefined; // Tab screen
+  Ask: undefined;
+  Me: undefined; // Tab screen: your own profile
   Conversation: { friendId: string; friendName: string };
   Profile: { userId?: string } | undefined; // omit userId for your own profile
   EditProfile: undefined;
