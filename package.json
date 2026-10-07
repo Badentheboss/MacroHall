@@ -1,0 +1,9 @@
+{
+  "name": "macrohall",
+  "private": true,
+  "description": "Repo-level helper scripts. The apps live in CollegeMacro-backend and CollegeMacro-mobile.",
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "env": "node scripts/setup.js --env-only"
+  }
+}

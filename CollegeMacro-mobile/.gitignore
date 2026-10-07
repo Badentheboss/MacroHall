@@ -46,3 +46,4 @@ expo-env.d.ts
 # Miscellaneous
 # ─────────────────────────────
 app-example
+!.env.example

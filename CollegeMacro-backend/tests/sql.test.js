@@ -7,12 +7,14 @@ const fs = require('fs');
 const path = require('path');
 
 const { buildSeedSql } = require('../src/cli/buildSeed');
+const { buildSetupSql } = require('../src/cli/buildSetupSql');
 
 const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
 
 const SHIM = read('tests', 'sql', 'supabase-shim.sql');
 const SCHEMA = read('src', 'db', 'schema.sql');
 const MIGRATION = read('src', 'db', 'migrations', '002_multi_school_social.sql');
+const PROFILES = read('src', 'db', 'migrations', '003_profiles.sql');
 const SEED = read('src', 'db', 'seed', 'schools.sql');
 
 const LEGACY = '00000000-0000-0000-0000-00000000000a';
@@ -68,6 +70,7 @@ test.before(async () => {
   await db.exec(SCHEMA);
   await db.exec(MIGRATION);
   await db.exec(SEED);
+  await db.exec(PROFILES);
 });
 
 test.after(async () => {
@@ -77,7 +80,12 @@ test.after(async () => {
 test('migration and seed are idempotent and the seed file is current', async () => {
   await db.exec(MIGRATION);
   await db.exec(SEED);
+  await db.exec(PROFILES);
   assert.equal(SEED, buildSeedSql(), 'run `npm run db:seed-sql` after editing the catalog');
+  assert.equal(read('src', 'db', 'setup.sql'), buildSetupSql(), 'run `npm run db:setup-sql` after editing any SQL');
+
+  // The one-paste bundle applies cleanly on top of everything as well.
+  await db.exec(read('src', 'db', 'setup.sql'));
 
   const { rows } = await db.query(`select slug, status from public.schools where slug in ('umich', 'ohio-state') order by slug`);
   assert.deepEqual(rows, [
@@ -272,4 +280,90 @@ test('daily log reset happens once per campus-local day', async () => {
   await asService(`select public.reset_daily_logs()`);
   row = (await db.query(`select log from public.users where id = $1`, [ALEX])).rows[0];
   assert.deepEqual(row.log, [{ name: 'Toast' }], 'second run the same day leaves the log alone');
+});
+
+const EVE = '00000000-0000-0000-0000-000000000005'; // umich
+const FRAN = '00000000-0000-0000-0000-000000000006'; // umich, Eve's friend
+const GABE = '00000000-0000-0000-0000-000000000007'; // umich, not a friend
+
+const EVE_LOG = [
+  { name: 'Grilled Chicken', servings: 2, mealTime: 'dinner', baseNutrition: { calories: '210', protein: '40', total_carbohydrate: '1', total_fat: '4.5' } },
+  { name: 'Rice', nutrition_facts: { calories: 200, protein: 4, total_carbohydrate: 44, total_fat: 0.5 } },
+];
+
+test('profiles: logs become history, visibility is enforced, profiles are editable', async () => {
+  await createStudent(EVE, 'eve@umich.edu', 'Eve', 'umich');
+  await createStudent(FRAN, 'fran@umich.edu', 'Fran', 'umich');
+  await createStudent(GABE, 'gabe@umich.edu', 'Gabe', 'umich');
+  await as(EVE, `select public.send_friend_request($1)`, [FRAN]);
+  await as(FRAN, `select public.respond_friend_request($1, true)`, [EVE]);
+
+  await as(EVE, `update public.users set log = $1 where id = auth.uid()`, [JSON.stringify(EVE_LOG)]);
+  const own = await as(EVE, `select calories, protein::float, carbs::float, fat::float, entries from public.daily_logs`);
+  assert.equal(own.rows.length, 1);
+  assert.deepEqual(
+    { calories: own.rows[0].calories, protein: own.rows[0].protein, carbs: own.rows[0].carbs, fat: own.rows[0].fat },
+    { calories: 620, protein: 84, carbs: 46, fat: 9.5 }
+  );
+  assert.deepEqual(own.rows[0].entries[0], { name: 'Grilled Chicken', meal: 'dinner', servings: 2, calories: 420, protein: 80, carbs: 2, fat: 9 });
+
+  // Friends see the log by default; classmates see the profile but not the food.
+  assert.equal((await as(FRAN, `select count(*)::int as n from public.daily_logs where user_id = $1`, [EVE])).rows[0].n, 1);
+  assert.equal((await as(GABE, `select count(*)::int as n from public.daily_logs where user_id = $1`, [EVE])).rows[0].n, 0);
+  const gabeView = (await as(GABE, `select public.get_profile($1) as p`, [EVE])).rows[0].p;
+  assert.equal(gabeView.display_name, 'Eve');
+  assert.equal(gabeView.can_view_log, false);
+  assert.equal(gabeView.stats, undefined);
+  assert.equal(gabeView.log_visibility, null, 'only the owner sees their visibility setting');
+  assert.deepEqual((await as(GABE, `select * from public.get_log_month($1, current_date)`, [EVE])).rows, []);
+  assert.equal((await as(DREW, `select public.get_profile($1) as p`, [EVE])).rows[0].p, null, 'other schools see nothing');
+
+  // History, streak and usuals.
+  await db.query(
+    `insert into public.daily_logs (user_id, day, entries, calories, protein)
+     values ($1, public.user_today($1) - 1, '[{"name":"Rice","servings":1,"protein":4,"calories":200}]', 900, 60),
+            ($1, public.user_today($1) - 2, '[{"name":"rice","servings":1,"protein":4,"calories":200}]', 1000, 70),
+            ($1, public.user_today($1) - 5, '[{"name":"Oatmeal","servings":1,"protein":6,"calories":183}]', 500, 20)`,
+    [EVE]
+  );
+  const franView = (await as(FRAN, `select public.get_profile($1) as p`, [EVE])).rows[0].p;
+  assert.equal(franView.friendship, 'friends');
+  assert.equal(franView.friend_count, 1);
+  assert.deepEqual(franView.stats, { streak: 3, days_logged_30: 4, avg_calories_7: 755, avg_protein_7: 59 });
+  assert.deepEqual(franView.usuals.map((u) => [u.name, u.times]), [['Rice', 3], ['Grilled Chicken', 1], ['Oatmeal', 1]]);
+  assert.equal(franView.usuals.find((u) => u.name === 'Grilled Chicken').protein, 40, 'per serving');
+  const month = await as(FRAN, `select count(*)::int as n from public.get_log_month($1, current_date)`, [EVE]);
+  assert.ok(month.rows[0].n >= 1);
+
+  // Editing: allowed columns only, validated.
+  await as(EVE, `update public.profiles set username = 'Eve.Lifts', bio = '  PPL 6x/week ', avatar_emoji = '💪', accent_color = '#E53935', goal = 'bulk', class_year = 2028, log_visibility = 'everyone' where id = auth.uid()`);
+  const edited = (await as(EVE, `select username, bio, goal from public.profiles where id = auth.uid()`)).rows[0];
+  assert.deepEqual(edited, { username: 'eve.lifts', bio: 'PPL 6x/week', goal: 'bulk' });
+  await rejects(as(EVE, `update public.profiles set school_id = null where id = auth.uid()`), /permission denied/);
+  await rejects(as(EVE, `update public.profiles set share_presence = false where id = auth.uid()`), /permission denied/);
+  await rejects(as(EVE, `update public.profiles set username = 'x' where id = auth.uid()`), /profiles_username_format/);
+  await rejects(as(FRAN, `update public.profiles set username = 'EVE.LIFTS' where id = auth.uid()`), /idx_profiles_username|duplicate/);
+  const fransRows = await as(FRAN, `update public.profiles set bio = 'hacked' where id = $1 returning id`, [EVE]);
+  assert.equal(fransRows.rows.length, 0, "cannot edit someone else's profile");
+
+  const osu = (await db.query(`select id from public.schools where slug = 'ohio-state'`)).rows[0].id;
+  const osuHall = (await db.query(`insert into public.dining_halls (school_id, slug, name) values ($1, 'scott', 'Scott') returning id`, [osu])).rows[0].id;
+  await rejects(as(EVE, `update public.profiles set favorite_hall_id = $1 where id = auth.uid()`, [osuHall]), /must be at your school/);
+  await as(EVE, `update public.profiles set favorite_hall_id = (select id from public.dining_halls where slug = 'bursley') where id = auth.uid()`);
+
+  // "Everyone at my school" opens the log to classmates.
+  assert.equal((await as(GABE, `select public.get_profile($1) as p`, [EVE])).rows[0].p.can_view_log, true);
+  assert.equal((await as(GABE, `select public.get_profile($1) as p`, [EVE])).rows[0].p.favorite_hall.name, 'Bursley');
+
+  // Search by @username prefix or name; blocked people disappear.
+  assert.deepEqual((await as(GABE, `select display_name, username, friendship from public.search_people('@eve')`)).rows, [
+    { display_name: 'Eve', username: 'eve.lifts', friendship: 'none' },
+  ]);
+  await as(EVE, `select public.block_user($1)`, [GABE]);
+  assert.deepEqual((await as(GABE, `select * from public.search_people('eve')`)).rows, []);
+  assert.equal((await as(GABE, `select public.get_profile($1) as p`, [EVE])).rows[0].p, null);
+
+  // Clearing the log removes today's entry but keeps history.
+  await as(EVE, `update public.users set log = '[]' where id = auth.uid()`);
+  assert.equal((await as(EVE, `select count(*)::int as n from public.daily_logs`)).rows[0].n, 3);
 });

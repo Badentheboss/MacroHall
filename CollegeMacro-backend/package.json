@@ -10,7 +10,8 @@
     "test": "node --test tests/*.test.js",
     "db:seed-sql": "node src/cli/buildSeed.js > src/db/seed/schools.sql",
     "discover": "node src/cli/discover.js",
-    "capture": "node src/cli/capture.js"
+    "capture": "node src/cli/capture.js",
+    "db:setup-sql": "node src/cli/buildSetupSql.js > src/db/setup.sql"
   },
   "keywords": [
     "dining",
