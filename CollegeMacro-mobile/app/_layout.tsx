@@ -1,4 +1,6 @@
 import React from "react";
+// Defines the background geofence task; must load before any screen.
+import "../utils/autoCheckIn";
 import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationProp } from "@react-navigation/native";
@@ -19,6 +21,7 @@ import DietaryPreferences from "./DietaryPreferences";
 import Conversation from "./Conversation";
 import PersonProfile from "./Profile";
 import EditProfile from "./EditProfile";
+import PlateBuilder from "./PlateBuilder";
 
 import { RootStackParamList } from "../types";
 import { ThemeProvider } from "../context/ThemeContext";
@@ -190,6 +193,17 @@ export default function Layout() {
           component={PersonProfile}
           options={{
             headerShown: true,
+            headerBackTitle: "Back",
+            headerTintColor: "#32745f",
+          }}
+        />
+
+        <Stack.Screen
+          name="PlateBuilder"
+          component={PlateBuilder}
+          options={{
+            headerShown: true,
+            headerTitle: "Hit My Macros",
             headerBackTitle: "Back",
             headerTintColor: "#32745f",
           }}

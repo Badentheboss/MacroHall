@@ -112,6 +112,22 @@ Each student has a profile page (Friends tab → **Your profile**, or tap anyone
 
 Food history is new: the app clears the log every night, so migration 003 copies every log change into a `daily_logs` table for the campus-local day. Calendars therefore start filling in from the day the migration runs.
 
+### Favorites, plate builder, and the gym
+
+- **Favorite dishes:** tap the heart on any dish in Add Food. The Dashboard lists where your favorites are served today and tomorrow, and they show on your profile.
+- **Hit my macros:** a Dashboard button opens the plate builder. It starts from what you have left today (editable), picks dishes and servings (up to 2 each, 4 dishes max) at every dining hall, ranks the halls, and logs the chosen plate in one tap. It's deterministic code, not AI, so it's instant and free. The chatbot can call it too ("I have 60g protein left, what should I eat at South Quad?").
+- **Gym crowd levels:** the Dashboard shows live occupancy by area (e.g. "Weight Room 82%") where the rec center publishes Connect2 counters. Purdue's is configured. For another school, open its rec center's "facility counts" page and look in the Network tab for `goboardapi.azurewebsites.net/...AccountAPIKey=<key>` (or a `connect2mycloud.com` widget link with `key=`), then add it to `occupancy` in `src/config/catalog.js`. Every school also gets "N MacroHall students here" (shown only at 3 or more) and which friends are there.
+- **Gym tracking:** dining-hall and gym location are separate switches in Friends. With gym location on, checking in at a gym records a visit, friends see "🏋️ At CCRB · 35m", and your profile shows gym days this week and month, time this week, and "At the gym now". Visits nobody ends count for 2 hours at most; visits under 10 minutes don't count as gym days.
+- **Automatic check-in (optional):** the OS watches geofences around your school's halls and gyms and checks you in and out as you arrive and leave, even with the app closed. It needs "Always" location, so it's off by default.
+
+Gyms need coordinates too:
+
+```sql
+update gym_facilities set latitude = <lat>, longitude = <lng>, geofence_radius_m = 120
+where slug = 'ccrb' and school_id = (select id from schools where slug = 'umich');
+-- also ncrb, imsb; Purdue: corec
+```
+
 ---
 
 ## 4. Campus food chatbot
@@ -177,7 +193,7 @@ Freemium with a higher AI limit plus the plate builder for Pro; anonymous, aggre
 
 **Fastest path:** on your computer, from the repo root, run `npm run setup`. It walks through the steps below one at a time: it creates and opens both `.env` files, copies the database SQL and the email template to your clipboard, and opens each Supabase and GitHub page. Use `npm run env` to just open the `.env` files.
 
-**Database (Supabase SQL editor):** paste `CollegeMacro-backend/src/db/setup.sql` and run it. It bundles `schema.sql`, migrations `002` and `003`, and the school seed, and it's safe to re-run. It expects the app's existing `public.users` table.
+**Database (Supabase SQL editor):** paste `CollegeMacro-backend/src/db/setup.sql` and run it. It bundles `schema.sql`, migrations `002`–`004`, and the school and gym seed, and it's safe to re-run. It expects the app's existing `public.users` table.
 
 **Supabase settings**
 - Email confirmation on, plus a `{{ .Token }}` code in the Confirm signup template ([section 5](#5-edu-only-accounts-with-a-school-picker)).

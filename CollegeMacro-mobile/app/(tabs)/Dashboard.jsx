@@ -16,6 +16,7 @@ import {
 } from "../../utils/nutrients";
 import AnimatedProgressWheel from "react-native-progress-wheel";
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import DashboardExtras from '../../components/DashboardExtras';
 import { useTheme } from '../../context/ThemeContext';
 
 const MACRO_COLORS = {
@@ -990,6 +991,14 @@ export default function Dashboard() {
           </View>
         </View>
       </View>
+
+      <DashboardExtras
+        isDarkMode={isDarkMode}
+        remaining={{
+          calories: remainingCalories,
+          protein: (userDailyValues?.dailyProtein || 50) - nutritionTotals.protein,
+        }}
+      />
 
       {/* Macros Section */}
       <View style={styles.macrosCard}>

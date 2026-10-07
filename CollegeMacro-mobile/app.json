@@ -42,9 +42,12 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "MacroHall uses your location only when you tap Check in, to find which dining hall you're in. Your location is never stored, and friends only see the hall name.",
-          "locationAlwaysAndWhenInUsePermission": false,
-          "locationAlwaysPermission": false
+          "locationWhenInUsePermission": "MacroHall uses your location when you tap Check in, to find which dining hall or gym you're in. Your location is never stored, and friends only see the place name.",
+          "locationAlwaysAndWhenInUsePermission": "If you turn on Automatic check-in, MacroHall is notified when you arrive at or leave your campus dining halls and gyms, so your gym visits and status update without opening the app. Your location is never stored.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": false,
+          "locationAlwaysPermission": "If you turn on Automatic check-in, MacroHall is notified when you arrive at or leave your campus dining halls and gyms, so your gym visits and status update without opening the app. Your location is never stored."
         }
       ],
       [

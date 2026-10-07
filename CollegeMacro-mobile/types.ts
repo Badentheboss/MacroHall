@@ -15,4 +15,5 @@ export type RootStackParamList = {
   Conversation: { friendId: string; friendName: string };
   Profile: { userId?: string } | undefined; // omit userId for your own profile
   EditProfile: undefined;
+  PlateBuilder: undefined;
 };

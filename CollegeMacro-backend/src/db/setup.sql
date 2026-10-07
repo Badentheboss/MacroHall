@@ -1318,6 +1318,53 @@ begin
   end if;
 end $$;
 
+-- 002's hall check-ins upsert presence; with gyms in the same row they must
+-- end any gym visit and clear the row first (one place at a time).
+create or replace function public.check_in_hall(p_hall_id bigint)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_me uuid := public.require_user();
+begin
+  if not exists (
+    select 1 from public.dining_halls where id = p_hall_id and school_id = public.my_school_id() and is_active
+  ) then
+    raise exception 'That dining hall is not at your school.';
+  end if;
+  perform public.end_gym_session(v_me);
+  delete from public.presence where user_id = v_me;
+  if (select share_presence from public.profiles where id = v_me) then
+    insert into public.presence (user_id, hall_id, checked_in_at, expires_at)
+    values (v_me, p_hall_id, now(), now() + interval '90 minutes');
+  end if;
+end $$;
+
+create or replace function public.check_in(p_lat double precision, p_lng double precision, p_accuracy_m double precision default null)
+returns table (hall_id bigint, hall_name text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_me uuid := public.require_user();
+  v_hall record;
+  v_sharing boolean;
+begin
+  if p_lat not between -90 and 90 or p_lng not between -180 and 180 then
+    raise exception 'Invalid coordinates.';
+  end if;
+
+  select * into v_hall from public.hall_at(public.my_school_id(), p_lat, p_lng, p_accuracy_m);
+  select share_presence into v_sharing from public.profiles where id = v_me;
+
+  perform public.end_gym_session(v_me);
+  delete from public.presence where user_id = v_me;
+  if v_hall.hall_id is not null and coalesce(v_sharing, false) then
+    insert into public.presence (user_id, hall_id, checked_in_at, expires_at)
+    values (v_me, v_hall.hall_id, now(), now() + interval '90 minutes');
+  end if;
+
+  if v_hall.hall_id is not null then
+    return query select v_hall.hall_id, v_hall.hall_name;
+  end if;
+end $$;
+
 -- Manual "I'm at the gym" (and geofence entry from background tracking).
 create or replace function public.check_in_gym(p_gym_id bigint)
 returns void language plpgsql security definer set search_path = public as $$

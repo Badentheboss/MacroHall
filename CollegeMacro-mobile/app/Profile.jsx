@@ -210,6 +210,43 @@ export default function Profile({ route, navigation }) {
             <Stat label="Avg protein (7d)" value={profile.stats.avg_protein_7 != null ? `${profile.stats.avg_protein_7}g` : "—"} styles={styles} />
           </View>
 
+          {profile.gym && (
+            <View style={styles.card}>
+              <View style={styles.gymHeader}>
+                <Text style={styles.sectionTitle}>🏋️ Gym</Text>
+                {profile.gym.at_gym_now && (
+                  <View style={styles.liveChip}>
+                    <Text style={styles.liveChipText}>At {profile.gym.at_gym_now} now</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.totals}>
+                <Macro label="Gym days (7d)" value={profile.gym.gym_days_7} styles={styles} />
+                <Macro label="Time this week" value={formatMinutes(profile.gym.gym_minutes_7)} styles={styles} />
+                <Macro label="Gym days (30d)" value={profile.gym.gym_days_30} styles={styles} />
+              </View>
+              {profile.gym.last_visit && !profile.gym.at_gym_now && (
+                <Text style={[styles.muted, { marginTop: 8 }]}>Last visit {new Date(profile.gym.last_visit).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</Text>
+              )}
+            </View>
+          )}
+          {isMe && profile.track_gym === false && (
+            <Text style={[styles.muted, { textAlign: "center", marginTop: 10 }]}>Turn on Gym location in Friends to track gym visits here.</Text>
+          )}
+
+          {profile.favorites?.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>❤️ Favorite dishes</Text>
+              <View style={styles.chips}>
+                {profile.favorites.map((dish) => (
+                  <View key={dish} style={styles.usual}>
+                    <Text style={styles.usualName}>{dish}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>{isMe ? "Your usuals" : "Usually eats"}</Text>
             {profile.usuals.length === 0 ? (
@@ -290,6 +327,12 @@ export default function Profile({ route, navigation }) {
   );
 }
 
+function formatMinutes(minutes) {
+  const total = Math.round(Number(minutes) || 0);
+  if (total < 60) return `${total}m`;
+  return `${Math.floor(total / 60)}h ${total % 60}m`;
+}
+
 function Stat({ label, value, styles }) {
   return (
     <View style={styles.stat}>
@@ -344,6 +387,9 @@ const makeStyles = (isDarkMode) => {
     totals: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
     macro: { alignItems: "center", flex: 1 },
     macroValue: { fontSize: 17, fontWeight: "800", color: text },
+    gymHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    liveChip: { backgroundColor: "#E3F2FD", borderRadius: 12, paddingVertical: 3, paddingHorizontal: 10 },
+    liveChipText: { color: "#1565C0", fontSize: 12, fontWeight: "700" },
     mealTitle: { fontSize: 13, fontWeight: "700", color: "#32745f", textTransform: "uppercase", marginBottom: 4 },
     entry: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 5, gap: 8 },
     entryName: { fontSize: 14, color: text, flex: 1 },

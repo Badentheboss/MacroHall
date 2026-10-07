@@ -26,6 +26,7 @@ import { formatNutrientDisplay } from "../../utils/nutrients";
 import * as ImagePicker from 'expo-image-picker';
 import { fetchHalls, fetchMySchool, todayInTimezone } from "../../utils/schools";
 import { postToBackend } from "../../utils/api";
+import { dishKey, fetchFavoriteKeys, setFavorite } from "../../utils/favorites";
 
 const ESTIMATED_SOURCES = new Set(['ai_estimated', 'crowdsourced']);
 const MEAL_ORDER = [
@@ -268,6 +269,7 @@ export default function FoodList() {
   const [halls, setHalls] = useState([]);
   const [menuDate, setMenuDate] = useState(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [favoriteKeys, setFavoriteKeys] = useState(new Set());
   const [selectedDiningHall, setSelectedDiningHall] = useState(null);
   const [foodItems, setFoodItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -747,6 +749,7 @@ export default function FoodList() {
       setSelectedMealTime(currentMealTime);
       
       fetchUserPreferences();
+      fetchFavoriteKeys().then(setFavoriteKeys).catch(() => {});
       if (school) {
         // Roll over to the new day's menu if the app stayed open past midnight
         setMenuDate(todayInTimezone(school.timezone));
@@ -757,6 +760,23 @@ export default function FoodList() {
   );
 
   const selectedHall = halls.find((hall) => hall.slug === selectedDiningHall);
+
+  // Hearted dishes show up on the Dashboard whenever a hall serves them.
+  const toggleFavorite = async (name) => {
+    const key = dishKey(name);
+    const wasFavorite = favoriteKeys.has(key);
+    const next = new Set(favoriteKeys);
+    if (wasFavorite) next.delete(key);
+    else next.add(key);
+    setFavoriteKeys(next);
+    try {
+      await setFavorite(name, !wasFavorite);
+      if (!wasFavorite) showModernPopup(`We'll show you when ${name} is on the menu`, "success");
+    } catch (error) {
+      setFavoriteKeys(favoriteKeys);
+      showModernPopup("Couldn't update favorites", "error");
+    }
+  };
 
   // No menu posted: a student photographs the menu board and the backend
   // turns it into dishes (nutrition estimated) for everyone at the school.
@@ -977,7 +997,25 @@ export default function FoodList() {
                       }}
                     >
                       <View style={styles.foodDetails}>
-                        <Text style={styles.foodName}>{foodItem.name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={[styles.foodName, { flexShrink: 1 }]}>{foodItem.name}</Text>
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              toggleFavorite(foodItem.name);
+                            }}
+                            hitSlop={10}
+                            style={{ marginLeft: 6 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={favoriteKeys.has(dishKey(foodItem.name)) ? `Remove ${foodItem.name} from favorites` : `Add ${foodItem.name} to favorites`}
+                          >
+                            <MaterialIcons
+                              name={favoriteKeys.has(dishKey(foodItem.name)) ? 'favorite' : 'favorite-border'}
+                              size={18}
+                              color={favoriteKeys.has(dishKey(foodItem.name)) ? '#E53935' : (isDarkMode ? '#888' : '#AAA')}
+                            />
+                          </TouchableOpacity>
+                        </View>
                         
                         {/* Only show labels if there are matches */}
                         {(matchingAllergens.length > 0 || matchingPreferences.length > 0 || isEstimate) && (

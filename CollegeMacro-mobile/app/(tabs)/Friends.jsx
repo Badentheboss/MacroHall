@@ -20,6 +20,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { fetchHalls, fetchMySchool } from "../../utils/schools";
 import { fetchProfile, searchPeople } from "../../utils/profiles";
 import Avatar from "../../components/Avatar";
+import { disableAutoCheckIn, enableAutoCheckIn, isAutoCheckInEnabled, refreshAutoCheckIn } from "../../utils/autoCheckIn";
 
 const REFRESH_MS = 60 * 1000;
 const REPORT_REASONS = ["Harassment", "Spam", "Something else"];
@@ -39,8 +40,11 @@ export default function Friends() {
   const [me, setMe] = useState(null);
   const [myProfile, setMyProfile] = useState(null);
   const [looks, setLooks] = useState({}); // id -> { avatar_emoji, accent_color, username }
-  const [myHall, setMyHall] = useState(null);
-  const [ghostMode, setGhostMode] = useState(false);
+  const [myPlace, setMyPlace] = useState(null); // { type: 'hall' | 'gym', name }
+  const [shareDining, setShareDining] = useState(true);
+  const [trackGym, setTrackGym] = useState(false);
+  const [autoCheckIn, setAutoCheckIn] = useState(false);
+  const [gyms, setGyms] = useState([]);
   const [friends, setFriends] = useState([]);
   const [incoming, setIncoming] = useState([]);
   const [unread, setUnread] = useState({});
@@ -58,11 +62,11 @@ export default function Friends() {
     setMe(user.id);
 
     const [presenceRes, friendsRes, requestsRes, unreadRes, profileRes] = await Promise.all([
-      supabase.from("presence").select("expires_at, dining_halls(name)").eq("user_id", user.id).maybeSingle(),
+      supabase.from("presence").select("expires_at, dining_halls(name), gym_facilities(name)").eq("user_id", user.id).maybeSingle(),
       supabase.rpc("get_friends_presence"),
       supabase.from("friendships").select("requester_id").eq("addressee_id", user.id).eq("status", "pending"),
       supabase.from("messages").select("sender_id").eq("recipient_id", user.id).is("read_at", null),
-      supabase.from("profiles").select("share_presence").eq("id", user.id).maybeSingle(),
+      supabase.from("profiles").select("share_presence, track_gym").eq("id", user.id).maybeSingle(),
     ]);
 
     fetchProfile(user.id).then(setMyProfile).catch(() => {});
@@ -76,8 +80,19 @@ export default function Friends() {
     }
 
     const presence = presenceRes.data;
-    setMyHall(presence && new Date(presence.expires_at) > new Date() ? presence.dining_halls?.name : null);
-    setGhostMode(profileRes.data ? !profileRes.data.share_presence : false);
+    const current = presence && new Date(presence.expires_at) > new Date() ? presence : null;
+    setMyPlace(
+      current?.gym_facilities?.name
+        ? { type: "gym", name: current.gym_facilities.name }
+        : current?.dining_halls?.name
+          ? { type: "hall", name: current.dining_halls.name }
+          : null
+    );
+    if (profileRes.data) {
+      setShareDining(profileRes.data.share_presence);
+      setTrackGym(profileRes.data.track_gym);
+    }
+    isAutoCheckInEnabled().then(setAutoCheckIn);
     if (!friendsRes.error) setFriends(friendsRes.data || []);
 
     const counts = {};
@@ -95,8 +110,17 @@ export default function Friends() {
 
   useEffect(() => {
     fetchMySchool()
-      .then((school) => (school ? fetchHalls(school.id) : []))
-      .then(setHalls)
+      .then(async (school) => {
+        if (!school) return;
+        setHalls(await fetchHalls(school.id));
+        const { data } = await supabase
+          .from("gym_facilities")
+          .select("id, name")
+          .eq("school_id", school.id)
+          .eq("is_active", true)
+          .order("name");
+        setGyms(data || []);
+      })
       .catch(() => setHalls([]));
   }, []);
 
@@ -132,21 +156,25 @@ export default function Friends() {
       }
 
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const { data, error } = await supabase.rpc("check_in", {
+      const { data, error } = await supabase.rpc("check_in_place", {
         p_lat: position.coords.latitude,
         p_lng: position.coords.longitude,
         p_accuracy_m: position.coords.accuracy,
       });
       if (error) throw error;
 
-      const hall = data?.[0]?.hall_name;
-      if (!hall) {
-        Alert.alert("Not at a dining hall", "We couldn't place you in a dining hall. You can pick one yourself.", [
-          { text: "OK", style: "cancel" },
-          { text: "Pick hall", onPress: () => setHallPickerVisible(true) },
-        ]);
-      } else if (ghostMode) {
-        Alert.alert(`You're at ${hall}`, "Ghost mode is on, so friends won't see it.");
+      const place = data?.[0];
+      if (!place) {
+        Alert.alert(
+          trackGym ? "Not at a dining hall or gym" : "Not at a dining hall",
+          "We couldn't place you. You can pick the place yourself.",
+          [
+            { text: "OK", style: "cancel" },
+            { text: "Pick place", onPress: () => setHallPickerVisible(true) },
+          ]
+        );
+      } else if (place.place_type === "hall" && !shareDining) {
+        Alert.alert(`You're at ${place.place_name}`, "Dining hall location is off, so friends won't see it.");
       }
       await load();
     } catch (error) {
@@ -156,9 +184,12 @@ export default function Friends() {
     }
   };
 
-  const checkInManually = async (hall) => {
+  const checkInManually = async (place, type) => {
     setHallPickerVisible(false);
-    const { error } = await supabase.rpc("check_in_hall", { p_hall_id: hall.id });
+    const { error } =
+      type === "gym"
+        ? await supabase.rpc("check_in_gym", { p_gym_id: place.id })
+        : await supabase.rpc("check_in_hall", { p_hall_id: place.id });
     if (error) Alert.alert("Couldn't check in", error.message);
     await load();
   };
@@ -168,14 +199,31 @@ export default function Friends() {
     await load();
   };
 
-  const toggleGhost = async (enabled) => {
-    setGhostMode(enabled);
-    const { error } = await supabase.rpc("set_ghost_mode", { p_enabled: enabled });
+  // Dining-hall and gym location are separate switches.
+  const setSharing = async (dining, gym) => {
+    const previous = { dining: shareDining, gym: trackGym };
+    setShareDining(dining);
+    setTrackGym(gym);
+    const { error } = await supabase.rpc("set_location_sharing", { p_dining: dining, p_gym: gym });
     if (error) {
-      setGhostMode(!enabled);
+      setShareDining(previous.dining);
+      setTrackGym(previous.gym);
       Alert.alert("Couldn't update", error.message);
+      return;
     }
+    refreshAutoCheckIn({ dining, gym }).catch(() => {});
     await load();
+  };
+
+  const toggleAutoCheckIn = async (enabled) => {
+    if (!enabled) {
+      await disableAutoCheckIn();
+      setAutoCheckIn(false);
+      return;
+    }
+    const result = await enableAutoCheckIn({ dining: shareDining, gym: trackGym });
+    setAutoCheckIn(result.ok);
+    if (!result.ok) Alert.alert("Automatic check-in is off", result.reason);
   };
 
   const search = (text) => {
@@ -248,6 +296,7 @@ export default function Friends() {
   };
 
   const atHallCount = friends.filter((friend) => friend.hall_name).length;
+  const atGymCount = friends.filter((friend) => friend.gym_name).length;
 
   const header = (
     <View>
@@ -264,21 +313,27 @@ export default function Friends() {
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <MaterialIcons name={myHall ? "place" : "location-off"} size={22} color={myHall ? "#32745f" : "#888"} />
-          <Text style={styles.cardTitle}>{myHall ? `You're at ${myHall}` : "You're not at a dining hall"}</Text>
+          <MaterialIcons
+            name={myPlace?.type === "gym" ? "fitness-center" : myPlace ? "place" : "location-off"}
+            size={22}
+            color={myPlace?.type === "gym" ? "#2196F3" : myPlace ? "#32745f" : "#888"}
+          />
+          <Text style={styles.cardTitle}>
+            {myPlace ? `You're at ${myPlace.name}` : trackGym ? "Not at a dining hall or gym" : "You're not at a dining hall"}
+          </Text>
         </View>
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.primaryButton} onPress={checkIn} disabled={checkingIn} accessibilityRole="button">
             {checkingIn ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.primaryButtonText}>{myHall ? "Update" : "Check in"}</Text>
+              <Text style={styles.primaryButtonText}>{myPlace ? "Update" : "Check in"}</Text>
             )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => setHallPickerVisible(true)} accessibilityRole="button">
-            <Text style={styles.secondaryButtonText}>Pick hall</Text>
+            <Text style={styles.secondaryButtonText}>Pick place</Text>
           </TouchableOpacity>
-          {myHall && (
+          {myPlace && (
             <TouchableOpacity style={styles.secondaryButton} onPress={checkOut} accessibilityRole="button">
               <Text style={styles.secondaryButtonText}>Leave</Text>
             </TouchableOpacity>
@@ -286,13 +341,31 @@ export default function Friends() {
         </View>
         <View style={styles.ghostRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.ghostTitle}>Ghost mode</Text>
-            <Text style={styles.ghostText}>Friends see you as "Not at a dining hall".</Text>
+            <Text style={styles.ghostTitle}>Dining hall location</Text>
+            <Text style={styles.ghostText}>Friends see which dining hall you're in. Off: you look "Not at a dining hall".</Text>
           </View>
-          <Switch value={ghostMode} onValueChange={toggleGhost} trackColor={{ true: "#32745f" }} />
+          <Switch value={shareDining} onValueChange={(v) => setSharing(v, trackGym)} trackColor={{ true: "#32745f" }} />
         </View>
+        <View style={styles.ghostRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.ghostTitle}>Gym location</Text>
+            <Text style={styles.ghostText}>Tracks your gym visits for your profile and shows friends when you're at the gym.</Text>
+          </View>
+          <Switch value={trackGym} onValueChange={(v) => setSharing(shareDining, v)} trackColor={{ true: "#2196F3" }} />
+        </View>
+        {(shareDining || trackGym) && (
+          <View style={styles.ghostRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ghostTitle}>Automatic check-in</Text>
+              <Text style={styles.ghostText}>
+                Checks you in and out as you arrive and leave, even with the app closed. Needs "Always" location; uses battery-friendly geofences.
+              </Text>
+            </View>
+            <Switch value={autoCheckIn} onValueChange={toggleAutoCheckIn} trackColor={{ true: "#32745f" }} />
+          </View>
+        )}
         <Text style={styles.privacyNote}>
-          Your location is used once to find your hall and is never saved. Only friends see the hall name, and check-ins expire after 90 minutes.
+          Your location is only used to find which hall or gym you're in and is never saved. Only friends see the place name. Dining check-ins expire after 90 minutes, gym check-ins after 2 hours.
         </Text>
       </View>
 
@@ -351,7 +424,9 @@ export default function Friends() {
       </View>
 
       <Text style={styles.sectionTitle}>
-        Friends {friends.length > 0 ? `· ${atHallCount} at a dining hall` : ""}
+        Friends
+        {friends.length > 0 ? ` · ${atHallCount} eating` : ""}
+        {atGymCount > 0 ? ` · ${atGymCount} at the gym` : ""}
       </Text>
     </View>
   );
@@ -375,12 +450,22 @@ export default function Friends() {
           >
             <View>
               <Avatar emoji={looks[friend.friend_id]?.avatar_emoji} color={looks[friend.friend_id]?.accent_color} size={42} />
-              <View style={[styles.statusDot, styles.statusBadge, { backgroundColor: friend.hall_name ? "#32745f" : isDarkMode ? "#444" : "#ccc" }]} />
+              <View
+                style={[
+                  styles.statusDot,
+                  styles.statusBadge,
+                  { backgroundColor: friend.gym_name ? "#2196F3" : friend.hall_name ? "#32745f" : isDarkMode ? "#444" : "#ccc" },
+                ]}
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{friend.display_name}</Text>
-              <Text style={friend.hall_name ? styles.atHall : styles.muted}>
-                {friend.hall_name ? `At ${friend.hall_name} · ${minutesAgo(friend.checked_in_at)}` : "Not at a dining hall"}
+              <Text style={friend.gym_name ? styles.atGym : friend.hall_name ? styles.atHall : styles.muted}>
+                {friend.gym_name
+                  ? `🏋️ At ${friend.gym_name} · ${minutesAgo(friend.checked_in_at)}`
+                  : friend.hall_name
+                    ? `At ${friend.hall_name} · ${minutesAgo(friend.checked_in_at)}`
+                    : "Not at a dining hall"}
               </Text>
             </View>
             {unread[friend.friend_id] > 0 && (
@@ -399,13 +484,19 @@ export default function Friends() {
       <Modal visible={hallPickerVisible} transparent animationType="fade" onRequestClose={() => setHallPickerVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Where are you eating?</Text>
+            <Text style={styles.modalTitle}>Where are you?</Text>
             {halls.length === 0 && <Text style={styles.muted}>No dining halls found for your school.</Text>}
             {halls.map((hall) => (
-              <TouchableOpacity key={hall.id} style={styles.hallOption} onPress={() => checkInManually(hall)}>
-                <Text style={styles.name}>{hall.name}</Text>
+              <TouchableOpacity key={`h${hall.id}`} style={styles.hallOption} onPress={() => checkInManually(hall, "hall")}>
+                <Text style={styles.name}>🍽️  {hall.name}</Text>
               </TouchableOpacity>
             ))}
+            {trackGym &&
+              gyms.map((gym) => (
+                <TouchableOpacity key={`g${gym.id}`} style={styles.hallOption} onPress={() => checkInManually(gym, "gym")}>
+                  <Text style={styles.name}>🏋️  {gym.name}</Text>
+                </TouchableOpacity>
+              ))}
             <TouchableOpacity onPress={() => setHallPickerVisible(false)} style={{ marginTop: 12 }}>
               <Text style={styles.cancel}>Cancel</Text>
             </TouchableOpacity>
@@ -466,6 +557,7 @@ const makeStyles = (isDarkMode) => {
     personTap: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
     name: { fontSize: 16, fontWeight: "600", color: text, flex: 1 },
     atHall: { fontSize: 13, color: "#32745f", fontWeight: "600", marginTop: 2 },
+    atGym: { fontSize: 13, color: "#2196F3", fontWeight: "600", marginTop: 2 },
     muted: { fontSize: 13, color: subtle, marginTop: 2 },
     empty: { textAlign: "center", color: subtle, marginTop: 12 },
     smallPrimary: { backgroundColor: "#32745f", borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 },

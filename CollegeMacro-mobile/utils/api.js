@@ -2,9 +2,17 @@ import { supabase } from './config';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-// POSTs JSON to the MacroHall backend as the signed-in user. Throws an Error
-// carrying the server's message (and HTTP status) on failure.
+// Calls the MacroHall backend as the signed-in user. Throws an Error carrying
+// the server's message (and HTTP status) on failure.
 export async function postToBackend(path, body) {
+  return callBackend('POST', path, body);
+}
+
+export async function getFromBackend(path) {
+  return callBackend('GET', path);
+}
+
+async function callBackend(method, path, body) {
   if (!BACKEND_URL) {
     throw new Error('EXPO_PUBLIC_BACKEND_URL is not set.');
   }
@@ -15,12 +23,12 @@ export async function postToBackend(path, body) {
   }
 
   const response = await fetch(`${BACKEND_URL}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   let payload = null;

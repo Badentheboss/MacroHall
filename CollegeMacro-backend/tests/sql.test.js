@@ -417,6 +417,18 @@ test('gyms: opt-in tracking, visits, friends at the gym, crowd threshold', async
   assert.deepEqual(atHall.rows, [{ place_type: 'hall', place_name: 'Bursley' }]);
   assert.equal((await db.query(`select count(*)::int as n from public.gym_sessions where user_id = $1 and ended_at is null`, [HANK])).rows[0].n, 0);
 
+  // The older hall check-ins also end a gym visit instead of colliding with it.
+  await as(KAI, `select public.check_in_hall((select id from public.dining_halls where slug = 'bursley'))`);
+  assert.deepEqual(
+    (await db.query(`select hall_id is not null as at_hall, gym_id from public.presence where user_id = $1`, [KAI])).rows,
+    [{ at_hall: true, gym_id: null }]
+  );
+  assert.equal((await db.query(`select count(*)::int as n from public.gym_sessions where user_id = $1 and ended_at is null`, [KAI])).rows[0].n, 0);
+  await as(KAI, `select public.check_in_gym($1)`, [gymId]);
+  await as(KAI, `select * from public.check_in($1, $2, 10)`, [HALL.lat, HALL.lng]);
+  assert.equal((await db.query(`select count(*)::int as n from public.presence where user_id = $1 and gym_id is null`, [KAI])).rows[0].n, 1);
+  await as(KAI, `select public.check_in_gym($1)`, [gymId]);
+
   // Turning gym location off hides and stops tracking; dining stays on.
   await as(JO, `select public.set_location_sharing(true, false)`);
   assert.deepEqual((await as(JO, `select * from public.check_in_place($1, $2, 10)`, [GYM.lat, GYM.lng])).rows, []);
