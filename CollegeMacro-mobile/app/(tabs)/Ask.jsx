@@ -1,18 +1,14 @@
-import React, { useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
-import { useTheme } from "../../context/ThemeContext";
+import React, { useEffect, useRef, useState } from "react";
+import { FlatList, KeyboardAvoidingView, Platform, TextInput, View } from "react-native";
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { postToBackend } from "../../utils/api";
+import { radius, space, type, useAppTheme, useStyles } from "../../theme";
+import { FadeIn, Tap, Txt } from "../../components/kit";
+
+// react-native-web renders a multiline input as a two-row textarea; start at one.
+const WEB_SINGLE_ROW = Platform.OS === "web" ? { numberOfLines: 1 } : {};
 
 const SUGGESTIONS = [
   "What's the highest-protein dinner on campus tonight?",
@@ -21,11 +17,58 @@ const SUGGESTIONS = [
   "When does the rec center close?",
 ];
 
+// Instagram's send button: a small ink disc with an up arrow, faded when empty.
+function SendButton({ onPress, disabled }) {
+  const { c } = useAppTheme();
+  return (
+    <Tap
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel="Send"
+      accessibilityState={{ disabled }}
+      hitSlop={6}
+      style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.ink, alignItems: "center", justifyContent: "center" }}
+    >
+      <Ionicons name="arrow-up" size={20} color={c.inverse} />
+    </Tap>
+  );
+}
+
+// One dot of the typing indicator; dots breathe one after another.
+function TypingDot({ delay }) {
+  const { c } = useAppTheme();
+  const opacity = useSharedValue(0.3);
+  useEffect(() => {
+    opacity.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(withTiming(1, { duration: 360, easing: Easing.out(Easing.quad) }), withTiming(0.3, { duration: 360, easing: Easing.in(Easing.quad) })),
+        -1
+      )
+    );
+  }, [delay, opacity]);
+  const animated = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View style={[{ width: 7, height: 7, borderRadius: 4, backgroundColor: c.muted }, animated]} />;
+}
+
+function Typing() {
+  const styles = useStyles(makeStyles);
+  return (
+    <View style={[styles.bubble, styles.theirs, styles.typing]} accessible accessibilityLabel="MacroHall is thinking">
+      <TypingDot delay={0} />
+      <TypingDot delay={160} />
+      <TypingDot delay={320} />
+    </View>
+  );
+}
+
 // The backend is stateless; the app keeps the conversation and sends the
 // recent turns with each question.
 export default function Ask() {
-  const { isDarkMode } = useTheme();
-  const styles = useMemo(() => makeStyles(isDarkMode), [isDarkMode]);
+  const { c } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -54,6 +97,8 @@ export default function Ask() {
     }
   };
 
+  const canSend = !!draft.trim() && !thinking;
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -69,94 +114,133 @@ export default function Ask() {
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           <View style={styles.intro}>
-            <MaterialIcons name="restaurant-menu" size={36} color="#32745f" />
-            <Text style={styles.introTitle}>Ask about food on campus</Text>
-            <Text style={styles.introText}>
-              I know today's dining hall menus, your macro targets and what you've logged.
-            </Text>
-            {SUGGESTIONS.map((suggestion) => (
-              <TouchableOpacity key={suggestion} style={styles.suggestion} onPress={() => ask(suggestion)}>
-                <Text style={styles.suggestionText}>{suggestion}</Text>
-              </TouchableOpacity>
-            ))}
+            <FadeIn style={styles.introHead}>
+              <View style={styles.introIcon}>
+                <Ionicons name="sparkles" size={28} color={c.ink} />
+              </View>
+              <Txt variant="h1" style={{ textAlign: "center" }}>
+                Ask about food on campus
+              </Txt>
+              <Txt variant="body" tone="muted" style={{ textAlign: "center", maxWidth: 320 }}>
+                I know today's dining hall menus, your macro targets and what you've logged.
+              </Txt>
+            </FadeIn>
+            <View style={styles.suggestions}>
+              <Txt variant="overline" tone="muted" style={{ marginBottom: space.xs }}>
+                Try asking
+              </Txt>
+              {SUGGESTIONS.map((suggestion, index) => (
+                <FadeIn key={suggestion} index={index + 1}>
+                  <Tap onPress={() => ask(suggestion)} scaleTo={0.985} accessibilityRole="button" accessibilityLabel={`Ask: ${suggestion}`} style={styles.suggestion}>
+                    <Txt variant="bodyStrong" style={{ flex: 1 }}>
+                      {suggestion}
+                    </Txt>
+                    <Ionicons name="arrow-forward" size={18} color={c.muted} />
+                  </Tap>
+                </FadeIn>
+              ))}
+            </View>
           </View>
         }
-        ListFooterComponent={
-          thinking ? (
-            <View style={[styles.bubble, styles.theirs, styles.thinking]}>
-              <ActivityIndicator size="small" color="#32745f" />
-            </View>
-          ) : null
-        }
-        renderItem={({ item }) => {
+        ListFooterComponent={thinking ? <Typing /> : null}
+        renderItem={({ item, index }) => {
           const mine = item.role === "user";
+          const prev = messages[index - 1];
+          const joinsPrev = prev && prev.role === item.role;
+          // The question that failed sits just before its error bubble.
+          const failedQuestion = item.error ? messages[index - 1]?.content : null;
           return (
-            <View style={[styles.bubble, mine ? styles.mine : styles.theirs, item.error && styles.errorBubble]}>
-              <Text style={mine ? styles.mineText : styles.theirsText}>{item.content}</Text>
+            <View style={{ marginTop: index === 0 ? 0 : joinsPrev ? 2 : space.md }}>
+              <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+                {item.error ? (
+                  <View style={styles.errorHead}>
+                    <Ionicons name="alert-circle-outline" size={16} color={c.accent} />
+                    <Txt variant="caption" tone="accent" style={{ fontFamily: type.bodyStrong.fontFamily }}>
+                      Couldn't answer
+                    </Txt>
+                  </View>
+                ) : null}
+                <Txt variant="body" tone={mine ? "inverse" : item.error ? "accent" : "ink"} selectable>
+                  {item.content}
+                </Txt>
+              </View>
+              {item.error && failedQuestion ? (
+                <Tap
+                  onPress={() => ask(failedQuestion)}
+                  disabled={thinking}
+                  accessibilityRole="button"
+                  accessibilityLabel="Try again"
+                  hitSlop={8}
+                  style={styles.retry}
+                >
+                  <Ionicons name="refresh" size={14} color={c.muted} />
+                  <Txt variant="caption" tone="muted">
+                    Tap to try again
+                  </Txt>
+                </Tap>
+              ) : null}
             </View>
           );
         }}
       />
 
-      <Text style={styles.disclaimer}>AI can make mistakes. Confirm allergens with dining staff.</Text>
-      <View style={styles.composer}>
-        <TextInput
-          style={styles.input}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Ask about menus, macros, or campus"
-          placeholderTextColor="#888"
-          maxLength={2000}
-          multiline
-        />
-        <TouchableOpacity onPress={() => ask(draft)} disabled={thinking || !draft.trim()} accessibilityLabel="Send">
-          <MaterialIcons name="send" size={26} color={draft.trim() && !thinking ? "#32745f" : "#999"} />
-        </TouchableOpacity>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.sm) }]}>
+        <Txt variant="caption" tone="muted" style={{ textAlign: "center" }}>
+          AI can make mistakes. Confirm allergens with dining staff.
+        </Txt>
+        <View style={styles.composer}>
+          <TextInput
+            style={styles.input}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Ask about menus, macros, or campus"
+            placeholderTextColor={c.faint}
+            maxLength={2000}
+            multiline
+            {...WEB_SINGLE_ROW}
+            accessibilityLabel="Ask MacroHall"
+          />
+          <SendButton onPress={() => ask(draft)} disabled={!canSend} />
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-const makeStyles = (isDarkMode) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDarkMode ? "#121212" : "#f5f7fa" },
-    list: { padding: 16, flexGrow: 1 },
-    intro: { alignItems: "center", paddingTop: 24 },
-    introTitle: { fontSize: 20, fontWeight: "800", color: isDarkMode ? "#E0E0E0" : "#32745f", marginTop: 8 },
-    introText: {
-      fontSize: 14,
-      color: isDarkMode ? "#AAA" : "#666",
-      textAlign: "center",
-      marginTop: 6,
-      marginBottom: 16,
-      lineHeight: 20,
-    },
-    suggestion: {
-      alignSelf: "stretch",
-      borderWidth: 1,
-      borderColor: isDarkMode ? "#333" : "rgba(50,116,95,0.25)",
-      backgroundColor: isDarkMode ? "#1E1E1E" : "#fff",
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 8,
-    },
-    suggestionText: { color: isDarkMode ? "#E0E0E0" : "#32745f", fontSize: 14, fontWeight: "600" },
-    bubble: { maxWidth: "85%", borderRadius: 16, paddingVertical: 9, paddingHorizontal: 13, marginBottom: 8 },
-    mine: { alignSelf: "flex-end", backgroundColor: "#32745f" },
-    theirs: { alignSelf: "flex-start", backgroundColor: isDarkMode ? "#2A2A2A" : "#fff" },
-    errorBubble: { borderWidth: 1, borderColor: "#E57373" },
-    thinking: { paddingVertical: 12 },
-    mineText: { color: "#fff", fontSize: 15, lineHeight: 21 },
-    theirsText: { color: isDarkMode ? "#E0E0E0" : "#222", fontSize: 15, lineHeight: 21 },
-    disclaimer: { fontSize: 11, color: isDarkMode ? "#777" : "#888", textAlign: "center", paddingBottom: 4 },
-    composer: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      padding: 12,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: isDarkMode ? "#333" : "#ddd",
-      backgroundColor: isDarkMode ? "#1E1E1E" : "#fff",
-    },
-    input: { flex: 1, maxHeight: 110, fontSize: 15, color: isDarkMode ? "#E0E0E0" : "#222", paddingVertical: 8 },
-  });
+const makeStyles = (c) => ({
+  container: { flex: 1, backgroundColor: c.bg },
+  list: { paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.lg, flexGrow: 1 },
+  intro: { flex: 1, justifyContent: "center", gap: space.xxl, paddingVertical: space.xl },
+  introHead: { alignItems: "center", gap: space.md },
+  introIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: c.sunken, alignItems: "center", justifyContent: "center", marginBottom: space.xs },
+  suggestions: { gap: space.sm },
+  suggestion: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    backgroundColor: c.surface,
+    borderRadius: radius.lg,
+    paddingVertical: space.lg,
+    paddingHorizontal: space.lg + space.xs,
+  },
+  bubble: { maxWidth: "85%", borderRadius: 22, paddingVertical: space.sm, paddingHorizontal: space.lg },
+  mine: { alignSelf: "flex-end", backgroundColor: c.ink },
+  theirs: { alignSelf: "flex-start", backgroundColor: c.surface },
+  errorHead: { flexDirection: "row", alignItems: "center", gap: space.xs, marginBottom: space.xs },
+  retry: { flexDirection: "row", alignItems: "center", gap: space.xs, alignSelf: "flex-start", paddingVertical: space.xs, paddingHorizontal: space.sm, marginTop: space.xs },
+  typing: { flexDirection: "row", alignItems: "center", gap: space.xs, height: 40, marginTop: space.md },
+  footer: { backgroundColor: c.bg, paddingTop: space.sm, gap: space.sm },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: space.sm,
+    marginHorizontal: space.lg,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.xs,
+    minHeight: 44,
+    borderRadius: radius.xl,
+    backgroundColor: c.sunken,
+  },
+  input: { ...type.body, flex: 1, maxHeight: 120, color: c.ink, paddingVertical: space.sm, outlineStyle: "none" },
+});

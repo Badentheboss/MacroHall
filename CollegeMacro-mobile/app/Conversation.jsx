@@ -1,25 +1,54 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  Alert,
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Alert, FlatList, KeyboardAvoidingView, Platform, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../utils/config";
-import { useTheme } from "../context/ThemeContext";
+import { radius, space, type, useAppTheme, useStyles } from "../theme";
+import { Chip, ChipRow, EmptyState, IconButton, Tap, Txt } from "../components/kit";
+
+// react-native-web renders a multiline input as a two-row textarea; start at one.
+const WEB_SINGLE_ROW = Platform.OS === "web" ? { numberOfLines: 1 } : {};
 
 const QUICK_REPLIES = ["Save me a seat", "On my way!", "Which hall?", "Want to grab food?"];
+const GROUP_MS = 5 * 60 * 1000; // consecutive bubbles within 5 min sit close together
+const STAMP_MS = 30 * 60 * 1000; // a timestamp appears after a 30 min gap
+
+function stampLabel(timestamp) {
+  const date = new Date(timestamp);
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return `Today ${time}`;
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  const sameWeek = today.getTime() - date.getTime() < 6 * 24 * 60 * 60 * 1000;
+  const day = date.toLocaleDateString([], sameWeek ? { weekday: "short" } : { month: "short", day: "numeric" });
+  return `${day} ${time}`;
+}
+
+// Instagram's send button: a small ink disc with an up arrow, faded when empty.
+function SendButton({ onPress, disabled }) {
+  const { c } = useAppTheme();
+  return (
+    <Tap
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel="Send"
+      accessibilityState={{ disabled }}
+      hitSlop={6}
+      style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.ink, alignItems: "center", justifyContent: "center" }}
+    >
+      <Ionicons name="arrow-up" size={20} color={c.inverse} />
+    </Tap>
+  );
+}
 
 export default function Conversation({ route, navigation }) {
   const { friendId, friendName } = route.params;
-  const { isDarkMode } = useTheme();
-  const styles = useMemo(() => makeStyles(isDarkMode), [isDarkMode]);
+  const { c } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
 
   const [me, setMe] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -57,13 +86,9 @@ export default function Conversation({ route, navigation }) {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerTitle: friendName,
-      headerRight: () => (
-        <TouchableOpacity onPress={report} style={{ marginRight: 16 }} accessibilityLabel="Report or block">
-          <MaterialIcons name="more-horiz" size={24} color={isDarkMode ? "#E0E0E0" : "#32745f"} />
-        </TouchableOpacity>
-      ),
+      headerRight: () => <IconButton name="ellipsis-horizontal" label="Report or block" onPress={report} style={{ marginRight: space.sm }} />,
     });
-  }, [navigation, friendName, report, isDarkMode]);
+  }, [navigation, friendName, report]);
 
   useEffect(() => {
     let channel;
@@ -123,6 +148,10 @@ export default function Conversation({ route, navigation }) {
     setMessages((current) => [...current, data]);
   };
 
+  // "Seen" sits under my latest message once the friend has read it.
+  const lastMineIndex = messages.reduce((found, m, i) => (m.sender_id === me ? i : found), -1);
+  const canSend = !!draft.trim() && !sending;
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -135,76 +164,106 @@ export default function Conversation({ route, navigation }) {
         keyExtractor={(message) => String(message.id)}
         contentContainerStyle={styles.list}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={<Text style={styles.empty}>Say hi to {friendName}.</Text>}
-        renderItem={({ item }) => {
+        keyboardShouldPersistTaps="handled"
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <EmptyState icon="chatbubbles-outline" title={`Say hi to ${friendName}`} body="Ask where they're eating, or tap a quick reply below." />
+          </View>
+        }
+        renderItem={({ item, index }) => {
           const mine = item.sender_id === me;
+          const prev = messages[index - 1];
+          const next = messages[index + 1];
+          const time = new Date(item.created_at).getTime();
+          const showStamp = !prev || time - new Date(prev.created_at).getTime() > STAMP_MS;
+          const joinsPrev = !showStamp && prev && prev.sender_id === item.sender_id && time - new Date(prev.created_at).getTime() < GROUP_MS;
+          const nextStamp = next && new Date(next.created_at).getTime() - time > STAMP_MS;
+          const joinsNext = next && !nextStamp && next.sender_id === item.sender_id && new Date(next.created_at).getTime() - time < GROUP_MS;
+          const tight = 6; // inner corner radius where bubbles join
+          const corners = mine
+            ? { borderTopRightRadius: joinsPrev ? tight : 22, borderBottomRightRadius: joinsNext ? tight : 22 }
+            : { borderTopLeftRadius: joinsPrev ? tight : 22, borderBottomLeftRadius: joinsNext ? tight : 22 };
           return (
-            <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
-              <Text style={mine ? styles.mineText : styles.theirsText}>{item.body}</Text>
+            <View>
+              {showStamp ? (
+                <Txt variant="caption" tone="muted" style={styles.stamp}>
+                  {stampLabel(item.created_at)}
+                </Txt>
+              ) : null}
+              <View
+                style={[styles.bubble, mine ? styles.mine : styles.theirs, corners, { marginTop: showStamp ? 0 : joinsPrev ? 2 : space.md }]}
+                accessible
+                accessibilityLabel={`${mine ? "You" : friendName}: ${item.body}`}
+              >
+                <Txt variant="body" tone={mine ? "inverse" : "ink"} selectable>
+                  {item.body}
+                </Txt>
+              </View>
+              {mine && index === lastMineIndex && item.read_at ? (
+                <Txt variant="caption" tone="muted" style={styles.seen}>
+                  Seen
+                </Txt>
+              ) : null}
             </View>
           );
         }}
       />
 
-      <View style={styles.quickRow}>
-        {QUICK_REPLIES.map((reply) => (
-          <TouchableOpacity key={reply} style={styles.quick} onPress={() => send(reply)} disabled={sending}>
-            <Text style={styles.quickText}>{reply}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.sm) }]}>
+        <ChipRow style={styles.quickRow}>
+          {QUICK_REPLIES.map((reply) => (
+            <Chip key={reply} label={reply} onPress={() => send(reply)} />
+          ))}
+        </ChipRow>
 
-      <View style={styles.composer}>
-        <TextInput
-          style={styles.input}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Message"
-          placeholderTextColor="#888"
-          maxLength={1000}
-          multiline
-        />
-        <TouchableOpacity onPress={() => send(draft)} disabled={sending || !draft.trim()} accessibilityLabel="Send">
-          <MaterialIcons name="send" size={26} color={draft.trim() ? "#32745f" : "#999"} />
-        </TouchableOpacity>
+        <View style={styles.composer}>
+          <TextInput
+            style={styles.input}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Message…"
+            placeholderTextColor={c.faint}
+            maxLength={1000}
+            multiline
+            {...WEB_SINGLE_ROW}
+            accessibilityLabel={`Message ${friendName}`}
+          />
+          <SendButton onPress={() => send(draft)} disabled={!canSend} />
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-const makeStyles = (isDarkMode) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDarkMode ? "#121212" : "#f5f7fa" },
-    list: { padding: 16, flexGrow: 1 },
-    empty: { textAlign: "center", color: isDarkMode ? "#999" : "#666", marginTop: 40 },
-    bubble: { maxWidth: "78%", borderRadius: 16, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 8 },
-    mine: { alignSelf: "flex-end", backgroundColor: "#32745f" },
-    theirs: { alignSelf: "flex-start", backgroundColor: isDarkMode ? "#2A2A2A" : "#fff" },
-    mineText: { color: "#fff", fontSize: 15 },
-    theirsText: { color: isDarkMode ? "#E0E0E0" : "#222", fontSize: 15 },
-    quickRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 12, paddingBottom: 6 },
-    quick: {
-      borderWidth: 1,
-      borderColor: isDarkMode ? "#444" : "rgba(50,116,95,0.3)",
-      borderRadius: 14,
-      paddingVertical: 5,
-      paddingHorizontal: 10,
-    },
-    quickText: { color: isDarkMode ? "#E0E0E0" : "#32745f", fontSize: 13, fontWeight: "600" },
-    composer: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      padding: 12,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: isDarkMode ? "#333" : "#ddd",
-      backgroundColor: isDarkMode ? "#1E1E1E" : "#fff",
-    },
-    input: {
-      flex: 1,
-      maxHeight: 110,
-      fontSize: 15,
-      color: isDarkMode ? "#E0E0E0" : "#222",
-      paddingVertical: 8,
-    },
-  });
+const makeStyles = (c) => ({
+  container: { flex: 1, backgroundColor: c.bg },
+  list: { paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.lg, flexGrow: 1 },
+  empty: { flex: 1, justifyContent: "center" },
+  stamp: { textAlign: "center", marginTop: space.xl, marginBottom: space.md },
+  bubble: { maxWidth: "78%", borderRadius: 22, paddingVertical: space.sm, paddingHorizontal: space.lg },
+  mine: { alignSelf: "flex-end", backgroundColor: c.ink },
+  theirs: { alignSelf: "flex-start", backgroundColor: c.surface },
+  seen: { alignSelf: "flex-end", marginTop: space.xs, marginRight: space.xs },
+  footer: { backgroundColor: c.bg, paddingTop: space.sm, gap: space.sm },
+  quickRow: { paddingHorizontal: space.lg },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: space.sm,
+    marginHorizontal: space.lg,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.xs,
+    minHeight: 44,
+    borderRadius: radius.xl,
+    backgroundColor: c.sunken,
+  },
+  input: {
+    ...type.body,
+    flex: 1,
+    maxHeight: 120,
+    color: c.ink,
+    paddingVertical: space.sm,
+    outlineStyle: "none",
+  },
+});
